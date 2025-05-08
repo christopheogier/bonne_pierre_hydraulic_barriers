@@ -85,4 +85,64 @@ function plot_ice_thickness(
     )
 end
 
+# structure at the top level to store attributes
+"""
+`LakeAnalysis` is a structure to store the results of a lake analysis. It holds the labeled image of detected lakes and 
+the statistical measurements for each lake, including their volume.
+
+# Fields:
+- `labels::Matrix{Int}`: A matrix where each pixel is assigned a label corresponding to a detected lake.
+- `stats::DataFrame`: A data frame containing combined measurements, such as area, for each labeled lake.
+"""
+struct LakeAnalysis
+    labels::Matrix{Int}    # Labeled image of lakes
+    stats::DataFrame       # Combined measurements and volumes
+end
+
+"""
+`analyze_lakes` takes two input rasters (lakes and ice mask), processes them to detect individual lakes, 
+calculates their volumes, and returns a `LakeAnalysis` structure.
+
+# Arguments:
+- `lakes::Matrix{Float64}`: A raster representing the lake areas where non-zero values indicate the presence of lakes.
+- `ice_mask::Matrix{Bool}`: A binary mask representing the ice-covered areas, where `true` indicates ice presence.
+
+# Returns:
+- `LakeAnalysis`: A structure containing two fields:
+    - `labels`: A matrix of labeled connected components, where each lake has a unique integer label.
+    - `stats`: A data frame containing various measurements for each lake, including the computed volume.
+
+# Example:
+    result = analyze_lakes(lakes, ice_mask)
+    println(result.labels)
+    println(result.stats)
+"""
+function analyze_lakes(lakes, ice_mask)
+    # Build binary lake mask
+    mask_lakes = (lakes .> 0) .& (ice_mask .> 0)
+
+    # Spatial resolution (assuming square pixels)
+    dx = step(dims(lakes)[1])
+
+    # Label connected components (individual lakes)
+    labeled_image = Images.label_components(mask_lakes)
+
+    # Analyze the labeled components to get stats (area in pixels, etc.)
+    measurements = analyze_components(labeled_image, BasicMeasurement())
+
+    # Compute volumes for each labeled lake
+    lake_volumes = Float64[]
+    for label in 1:maximum(labeled_image)
+        mask_current = labeled_image .== label
+        volume = sum(lakes[mask_current]) * dx^2  # Volume in m³
+        push!(lake_volumes, volume)
+    end
+
+    # Add volumes as a new column to the measurements DataFrame
+    measurements.volume = lake_volumes
+
+    return LakeAnalysis(labeled_image, measurements)
+end
+
+
 

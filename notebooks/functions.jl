@@ -1,3 +1,7 @@
+
+
+using Plots, DataFrames, Statistics
+
 """
     compute_ice_thickness(surface::Raster, bed::Raster) -> Raster
 
@@ -16,7 +20,7 @@ function compute_ice_thickness(surface::Raster, bed::Raster)
     # Clean, crop surface: set invalid elevation values to NaN
     surface = crop(surface; to=bed)
 
-    surface[surface .< 0] .= NaN
+    #surface[surface .< 0] .= NaN
 
     # Resample bed to match surface resolution and grid
     bed_resamp = resample(bed; to=surface, method=:bilinear)
@@ -24,6 +28,7 @@ function compute_ice_thickness(surface::Raster, bed::Raster)
     # Compute ice thickness
     ice_thickness = surface .- bed_resamp
     ice_thickness[ice_thickness .< 0] .= 0
+    ice_thickness[isnan.(ice_thickness)] .= 0
 
     return ice_thickness
 end
@@ -121,8 +126,10 @@ function analyze_lakes(lakes, ice_mask)
     # Build binary lake mask
     mask_lakes = (lakes .> 0) .& (ice_mask .> 0)
 
-    # Spatial resolution (assuming square pixels)
-    dx = step(dims(lakes)[1])
+    # Spatial resolution 
+    dx = step(dims(lakes)[1])  # pixel size in meters
+    pixel_area = dx^2          # pixel area in m²
+    
 
     # Label connected components (individual lakes)
     labeled_image = Images.label_components(mask_lakes)
@@ -130,19 +137,47 @@ function analyze_lakes(lakes, ice_mask)
     # Analyze the labeled components to get stats (area in pixels, etc.)
     measurements = analyze_components(labeled_image, BasicMeasurement())
 
-    # Compute volumes for each labeled lake
+    # Compute volume and real-world area for each lake
     lake_volumes = Float64[]
+    lake_areas_m2 = Float64[]
     for label in 1:maximum(labeled_image)
         mask_current = labeled_image .== label
-        volume = sum(lakes[mask_current]) * dx^2  # Volume in m³
+        volume = sum(lakes[mask_current]) * pixel_area  # Volume in m³
+        area_m2 = sum(mask_current) * pixel_area         # Area in m²
         push!(lake_volumes, volume)
+        push!(lake_areas_m2, area_m2)
     end
-
-    # Add volumes as a new column to the measurements DataFrame
+  
+    # Add new columns to the DataFrame
     measurements.volume = lake_volumes
+    measurements.area_m2 = lake_areas_m2
 
     return LakeAnalysis(labeled_image, measurements)
 end
 
 
+"""
+    boxplot_lakes(lakes, col_str)
 
+Compute basic statistics (mean, median, Q1, Q3, IQR) for the given column of `lakes.stats`.
+
+# Arguments
+- `lakes`: The object containing the `stats` DataFrame.
+- `col_str`: The column to analyze, passed as a string (e.g., `"area"`, `"volume"`).
+
+# Returns
+A NamedTuple with mean, median, Q1, Q3, and IQR.
+"""
+function boxplot_lakes(lakes, col_str::AbstractString)
+    col = Symbol(col_str)  # Convert string to symbol
+    vol = lakes.stats[!, col]
+    return (
+        mean = mean(vol),
+        median = median(vol),
+        q1 = quantile(vol, 0.25),
+        q3 = quantile(vol, 0.75),
+        iqr = quantile(vol, 0.75) - quantile(vol, 0.25),
+        number = length(vol),
+        max = maximum(vol)
+    )
+end

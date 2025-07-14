@@ -84,3 +84,21 @@ function compute_ice_thickness(surface::Raster, bed::Raster)
 
     return ice_thickness
 end
+
+
+function compute_glacier_outline(thickness::Raster)
+    # Convert Raster to raw matrix (assume Band 1)
+    thickness_array = Matrix(thickness)
+    cs = contours(thickness_array, levels=[0.5])  # 0.5m ice thickness = glacier margin
+
+    # Extract contour paths and map them back to raster coordinates
+    xdim, ydim = dims(thickness)
+    outline_coords = []
+
+    for c in cs[1].lines
+        path = [(xdim[x], ydim[y]) for (x, y) in zip(c.coordinates[:, 1], c.coordinates[:, 2])]
+        push!(outline_coords, path)
+    end
+
+    return outline_coords  # Vector of vectors of (x, y)
+end

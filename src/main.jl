@@ -94,7 +94,7 @@ for run in runs[1:1]
     mean_area = mean(analysis.stats.area_m2)
     total_volume = sum(analysis.stats.volume)
     depth = analysis.stats.volume ./ analysis.stats.area_m2
-    median_depth = median(depth)
+    mean_depth = mean(depth)
     max_depth = maximum(depth)
 
     # Add to summary table
@@ -103,7 +103,7 @@ for run in runs[1:1]
         n_lakes = n_lakes,
         mean_area_m2 = mean_area,
         total_volume_m3 = total_volume,
-        median_depth_m = median_depth,
+        mean_depth_m = mean_depth,
         max_depth_m = max_depth
     )
     append!(summaries, df)
@@ -112,10 +112,10 @@ for run in runs[1:1]
     #write(out_prefix * "_lake_labels.tif", Raster(analysis.labels); force=true)
 
     #plot
-    plot_lake_depth(lakes_free_surf, thickness, joinpath(output_dir, run.name * "_lakes_free.png"))
+    plt = plot_lake_depth(lakes_free_surf, joinpath(output_dir, run.name * "_lakes_free.png"))
+    #plot_glacier_outline!(plt, thickness)  # adds smooth white outline
     plot_hydraulic_head(phi, joinpath(output_dir, run.name * "_phi.png"))
-
-
+  
 
     println("  ✅ Done with run: ", run.name)
 end

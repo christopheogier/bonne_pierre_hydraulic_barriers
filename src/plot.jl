@@ -11,6 +11,7 @@ using Plots
 using Rasters
 using DelimitedFiles  # for loading GPR points if needed
 using Plots, Statistics
+using Contour
 
 
 ENV["GKSwstype"] = "100"  # Enable headless plotting (no GUI required)
@@ -119,7 +120,7 @@ function plot_bedrock(rt::Raster; savepath=nothing)
     end
 end
 
-function plot_lake_depth(lakes::Raster, thickness::Raster, savepath::String)
+function plot_lake_depth(lakes::Raster, savepath::String)
     plt = heatmap(
         lakes;
         title="Lake depth (m)",
@@ -130,24 +131,6 @@ function plot_lake_depth(lakes::Raster, thickness::Raster, savepath::String)
         size=(800, 700),
         aspect_ratio=:equal
     )
-
-    # --- Compute glacier outline from mask ---
-    mask = map(x -> x > 0 ? 1.0 : 0.0, thickness)
-    cs = contours(mask, levels=[0.5])  # Contour.jl contours
-
-    # Plot outline using `plot!(...; seriestype=:path)`
-    for c in cs[1].contours
-        plot!(
-            plt,
-            c.x,
-            c.y;
-            seriestype = :path,
-            linecolor = :white,
-            linewidth = 2,
-            label = false
-        )
-    end
-
     savefig(plt, savepath)
     return plt
 end
@@ -176,7 +159,7 @@ function plot_hydraulic_head(phi::Raster, savepath::String)
             contour!(
                 plt,
                 phi_clean;
-                levels=range(vmin, vmax; step=100),
+                levels=range(vmin, vmax; step=10),
                 linewidth=1.0,
                 linecolor=:black,
                 label=false
@@ -189,5 +172,23 @@ function plot_hydraulic_head(phi::Raster, savepath::String)
     end
 
     savefig(plt, savepath)
+    return plt
+end
+
+"""
+    plot_glacier_outline!(plt, mask::Raster; level=0.5, color=:white, linewidth=2)
+Plot glacier outline on an existing plot using contours from a mask raster.
+"""
+
+function plot_glacier_outline!(plt, mask::Raster; level=0.5, color=:white, linewidth=2)
+    mask_mat = Array(mask)
+    x = collect(coords(mask, 1))
+    y = collect(coords(mask, 2))
+
+    cs = contours(x, y, mask_mat, [level])
+
+    for c in cs[1].contours
+        plot!(plt, c.x, c.y; color=color, linewidth=linewidth, label=false)
+    end
     return plt
 end

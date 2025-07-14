@@ -4,13 +4,18 @@ plot.jl
 Functions to plot ice thickness and bedrock elevation using Raster.jl and Plots.jl.
 
 Optional GPR points can be added.
-"""
 
-ENV["GKSwstype"] = "100"  # Enable headless plotting (no GUI required)
+"""
 
 using Plots
 using Rasters
 using DelimitedFiles  # for loading GPR points if needed
+using Plots, Statistics
+
+
+ENV["GKSwstype"] = "100"  # Enable headless plotting (no GUI required)
+
+
 
 """
     plot_ice_thickness(rt::Raster; gpr_points=nothing, savepath=nothing)
@@ -114,3 +119,75 @@ function plot_bedrock(rt::Raster; savepath=nothing)
     end
 end
 
+function plot_lake_depth(lakes::Raster, thickness::Raster, savepath::String)
+    plt = heatmap(
+        lakes;
+        title="Lake depth (m)",
+        colorbar_title="Lake depth (m)",
+        color=:blues,
+        axis=false,
+        ticks=false,
+        size=(800, 700),
+        aspect_ratio=:equal
+    )
+
+    # --- Compute glacier outline from mask ---
+    mask = map(x -> x > 0 ? 1.0 : 0.0, thickness)
+    cs = contours(mask, levels=[0.5])  # Contour.jl contours
+
+    # Plot outline using `plot!(...; seriestype=:path)`
+    for c in cs[1].contours
+        plot!(
+            plt,
+            c.x,
+            c.y;
+            seriestype = :path,
+            linecolor = :white,
+            linewidth = 2,
+            label = false
+        )
+    end
+
+    savefig(plt, savepath)
+    return plt
+end
+
+function plot_hydraulic_head(phi::Raster, savepath::String)
+    phi_clean = replace(phi, NaN => missing)
+    vals = vec(collect(phi_clean))
+    vals = filter(!isnan, skipmissing(vals))
+
+    plt = heatmap(
+        phi_clean;
+        title="Hydraulic head (m)",
+        colorbar_title="Hydraulic head (m)",
+        color=:thermal,
+        axis=false,
+        ticks=false,
+        size=(800, 700),
+        aspect_ratio=:equal
+    )
+
+    if !isempty(vals)
+        vmin = floor(minimum(vals), digits=0)
+        vmax = ceil(maximum(vals), digits=0)
+
+        if vmin < vmax
+            contour!(
+                plt,
+                phi_clean;
+                levels=range(vmin, vmax; step=100),
+                linewidth=1.0,
+                linecolor=:black,
+                label=false
+            )
+        else
+            @warn "Skipping contour: vmin == vmax ($(vmin))"
+        end
+    else
+        @warn "Skipping contour: no valid phi values found"
+    end
+
+    savefig(plt, savepath)
+    return plt
+end

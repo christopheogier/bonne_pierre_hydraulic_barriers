@@ -7,9 +7,15 @@ export LakeAnalysisResult, analyze_lakes, boxplot_lakes
 struct LakeAnalysisResult
     labels::Matrix{Int}
     stats::DataFrame
+    min_depth::Float64
 end
 
-function analyze_lakes(lakes::Raster, surface::Raster, thickness::Raster, bedrock::Raster)
+function analyze_lakes(
+    lakes::Raster,
+    surface::Raster,
+    thickness::Raster;
+    min_depth::Float64 = 0.0
+)
     # Use raster geometry to compute area
     dx = step(dims(lakes)[1])
     pixel_area = dx^2
@@ -17,8 +23,8 @@ function analyze_lakes(lakes::Raster, surface::Raster, thickness::Raster, bedroc
     # Create ice mask from thickness
     ice_mask = (thickness .> 0) .& .!ismissing.(surface)
 
-    # Mask lake pixels to be only under ice
-    mask_lakes = (lakes .> 0) .& ice_mask
+    # Mask lake pixels to be only under ice and deeper than min_depth
+    mask_lakes = (lakes .> min_depth) .& ice_mask
 
     # Label connected components
     labeled_image = Images.label_components(collect(Bool.(mask_lakes)))
@@ -38,7 +44,7 @@ function analyze_lakes(lakes::Raster, surface::Raster, thickness::Raster, bedroc
     measurements.volume = lake_volumes
     measurements.area_m2 = lake_areas_m2
 
-    return LakeAnalysisResult(labeled_image, measurements)
+    return LakeAnalysisResult(labeled_image, measurements, min_depth)
 end
 
 function boxplot_lakes(lakes::LakeAnalysisResult, col_str::AbstractString)

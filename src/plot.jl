@@ -11,7 +11,7 @@ using Plots
 using Rasters
 using DelimitedFiles  # for loading GPR points if needed
 using Plots, Statistics
-using Contour
+
 
 
 ENV["GKSwstype"] = "100"  # Enable headless plotting (no GUI required)
@@ -159,7 +159,7 @@ function plot_hydraulic_head(phi::Raster, savepath::String)
             contour!(
                 plt,
                 phi_clean;
-                levels=range(vmin, vmax; step=10),
+                levels=range(vmin, vmax; step=20),
                 linewidth=1.0,
                 linecolor=:black,
                 label=false
@@ -175,20 +175,3 @@ function plot_hydraulic_head(phi::Raster, savepath::String)
     return plt
 end
 
-"""
-    plot_glacier_outline!(plt, mask::Raster; level=0.5, color=:white, linewidth=2)
-Plot glacier outline on an existing plot using contours from a mask raster.
-"""
-
-function plot_glacier_outline!(plt, mask::Raster; level=0.5, color=:white, linewidth=2)
-    mask_mat = Array(mask)
-    x = collect(coords(mask, 1))
-    y = collect(coords(mask, 2))
-
-    cs = contours(x, y, mask_mat, [level])
-
-    for c in cs[1].contours
-        plot!(plt, c.x, c.y; color=color, linewidth=linewidth, label=false)
-    end
-    return plt
-end

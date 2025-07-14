@@ -48,11 +48,14 @@ runs = [
 
 ]
 
+# Treshold for minimal lake depth
+min_depth = 2.  # meters, adjust as needed
+
 # Initialize summary DataFrame
 summaries = DataFrame()
 
 # Loop over each run
-for run in runs[1:1]
+for run in runs
 
     println("\n🔷 Processing run: ", run.name)
 
@@ -87,24 +90,17 @@ for run in runs[1:1]
 
     # Analyze lakes
     println("  Analyzing lake_free_surface...")
-    analysis = analyze_lakes(lakes_free_surf, surface, thickness, bedrock)
+    analysis = analyze_lakes(lakes_free_surf, surface, thickness; min_depth = min_depth)
 
-    # Compute metrics
-    n_lakes = maximum(analysis.labels)
-    mean_area = mean(analysis.stats.area_m2)
-    total_volume = sum(analysis.stats.volume)
-    depth = analysis.stats.volume ./ analysis.stats.area_m2
-    mean_depth = mean(depth)
-    max_depth = maximum(depth)
-
-    # Add to summary table
     df = DataFrame(
         run = run.name,
-        n_lakes = n_lakes,
-        mean_area_m2 = mean_area,
-        total_volume_m3 = total_volume,
-        mean_depth_m = mean_depth,
-        max_depth_m = max_depth
+        min_depth_m = analysis.min_depth,
+        n_lakes = nrow(analysis.stats),
+        total_volume_m3 = sum(analysis.stats.volume),
+        mean_area_m2 = mean(analysis.stats.area_m2),
+        max_depth_m = maximum(collect(lakes_free_surf)[analysis.labels .> 0]) #after filtering lake depth
+
+        
     )
     append!(summaries, df)
 
@@ -112,9 +108,8 @@ for run in runs[1:1]
     #write(out_prefix * "_lake_labels.tif", Raster(analysis.labels); force=true)
 
     #plot
-    plt = plot_lake_depth(lakes_free_surf, joinpath(output_dir, run.name * "_lakes_free.png"))
-    #plot_glacier_outline!(plt, thickness)  # adds smooth white outline
-    plot_hydraulic_head(phi, joinpath(output_dir, run.name * "_phi.png"))
+    plot_lake_depth(lakes_free_surf, joinpath(output_dir, run.name * "_lakes_free.png"))
+    #plot_hydraulic_head(phi, joinpath(output_dir, run.name * "_phi.png"))
   
 
     println("  ✅ Done with run: ", run.name)

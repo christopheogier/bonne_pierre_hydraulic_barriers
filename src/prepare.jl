@@ -27,6 +27,9 @@ ENV["GKSwstype"] = "100"  # Use "file output" mode for GR when plotting
 bedrock = load_bedrock(joinpath(datadir_in, "BED_10m_l93_20smooth.tif"))
 ice_thickness = load_ice_thickness(joinpath(datadir_in, "Hall_10m_l93_GlaTE20.asc"))  # ice thickness from air eth and glate on 6.11.2024
 
+# load bedrock plus and minus from GPR
+
+
 # Load and clean surface DEM cropped to bedrock extent
 surface_2021_cr = load_surface(joinpath(datadir_in, "Berarde_Res1.0_CompElevmean_merged.tif"), bedrock) #1m
 surface_2024_june = load_surface(joinpath(datadir_in, "Lidar_juin2024_Bonne_Pierre_1m.tif"), bedrock) #1m

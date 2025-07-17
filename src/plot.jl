@@ -13,6 +13,7 @@ using DelimitedFiles  # for loading GPR points if needed
 using Plots, Statistics
 using Contour  # for contour lines
 using StatsPlots
+using Images, ImageComponentAnalysis
 
 
 
@@ -122,12 +123,10 @@ function plot_bedrock(rt::Raster; savepath=nothing)
     end
 end
 
-"""
-    plot_lake_depth(lakes::Raster, savepath::String; largest_mask::Union{Nothing, BitMatrix}=nothing)
 
-Plot a heatmap of lake depths. If `largest_mask` is provided, the outline of the largest lake is overlaid.
-"""
 function plot_lake_depth(lakes::Raster, savepath::String)
+
+    # add outline of filtered lake (e.g. > 2m depth)
     plt = heatmap(
         lakes;
         title = "Lake depth (m)",
@@ -138,6 +137,54 @@ function plot_lake_depth(lakes::Raster, savepath::String)
         size = (800, 700),
         aspect_ratio = :equal
     )
+
+    savefig(plt, savepath)
+    return plt
+end
+
+
+## IN PREP: PLOTTING OUTLINES AND MASK OVER heatmap
+
+function lake_outlines(lakes::AbstractArray{<:Real}, min_depth::Real=2.0)
+    # Create boolean mask of lakes deeper than min_depth
+    mask = lakes .> min_depth
+
+    # Label connected components (8-connectivity by default)
+    labeled = Images.label_components(mask)
+
+    # Create outline mask by subtracting eroded mask from original mask
+    # This leaves only the boundaries
+    se = ones(Bool, 3,3)  # structuring element for erosion
+    eroded = imerode(mask, se)
+    outline = mask .& .!eroded
+
+    return labeled, outline
+end
+
+
+"""
+    plot_lake_depth(lakes::Raster, savepath::String; largest_mask::Union{Nothing, BitMatrix}=nothing)
+
+"""
+
+function plot_lake_depth_with_outlines(lakes::AbstractArray{<:Real}, savepath::String; min_depth=2.0)
+    labeled, outline = lake_outlines(lakes, min_depth)
+
+    plt = heatmap(
+        lakes;
+        title = "Lake depth (m)",
+        colorbar_title = "Lake depth (m)",
+        color = :blues,
+        axis = false,
+        ticks = false,
+        size = (800, 700),
+        aspect_ratio = :equal,
+    )
+
+    # Overlay outlines in red with line thickness 1.5
+    # Using scatter with marker=:rect and alpha for a pixelated edge effect
+    xs, ys = findall(outline) |> unzip
+    scatter!(ys, xs; color=:red, markerstrokewidth=0, markersize=1, alpha=0.7)
 
     savefig(plt, savepath)
     return plt
@@ -221,56 +268,67 @@ function heatmap_mindepth_vs_smoothing(summaries::DataFrame, run_name::AbstractS
     savefig(plt, savepath)
 end
 
-function plot_run_summary(summaries::DataFrame, run_name::String, output_dir::String)
-    # Filter data for the selected run
-    df = filter(row -> row.run == run_name, summaries)
+function plot_selected_scenarios(summaries::DataFrame, output_path::String)
 
-    # Convert numeric parameters to string for plotting
-    df.smooth_str = string.(df.smooth_surface_ice_fraction)
-    df.depth_str = string.(df.min_depth_m)
-    df.fill_str = string.(df.fill_frac)
+    # Filter scenarios
+    case1 = filter(row -> row.min_depth_m == 0.0 && row.smooth_surface_ice_fraction == 0.0, summaries)
+    case2 = filter(row -> row.min_depth_m == 2.0 && row.smooth_surface_ice_fraction == 0.1, summaries)
 
-    # Set categorical x-axis labels
-    df.label = "d=" .* df.depth_str .* ", s=" .* df.smooth_str .* ", f=" .* df.fill_str
+    case1.label .= "min=0.0 / smooth=0.0"
+    case2.label .= "min=2.0 / smooth=0.1"
 
-    # Sort labels for consistent plotting
-    sortperm = sortperm(df.label)
-    df = df[sortperm, :]
+    df = vcat(case1, case2)
+    sort!(df, [:run, :label])
 
-    # Plot 1: Number of lakes
-    bar1 = bar(
-        df.label,
-        df.n_lakes,
-        legend = false,
-        title = "Number of Lakes - $(run_name)",
-        xlabel = "Parameters (min_depth, smoothing, fill)",
-        ylabel = "Number of Lakes",
-        xticks = :auto,
+    labels = unique(df.label)
+    runs = unique(df.run)
+
+    # Create long-format DataFrame: one row per (run, label, metric)
+    long_df = DataFrame(run = String[], label = String[], metric = String[], value = Float64[], n_lakes = Int[])
+    metrics = [:total_volume_m3, :largest_single_volume_m3]
+
+    for metric in metrics
+        append!(long_df, DataFrame(
+            run = df.run,
+            label = df.label,
+            metric = fill(string(metric), nrow(df)),
+            value = df[!, metric],
+            n_lakes = df.n_lakes,
+        ))
+    end
+
+    # Create x-axis label that groups by run and metric
+    long_df.group = string.(long_df.run, " / ", long_df.metric)
+
+    # Plot: group by run/metric, color by scenario
+    p = groupedbar(
+        long_df.group,
+        long_df.value,
+        group = long_df.label,
+        bar_position = :dodge,
+        xlabel = "Run / Metric",
+        ylabel = "Volume [m³]",
+        legend = :topright,
+        title = "Lake Volume Summary (Selected Scenarios)",
+        size = (1100, 500),
         rotation = 45,
-        bar_width = 0.6,
-        color = :steelblue,
-        size = (900, 400),
-        dpi = 200
+        color = [:dodgerblue :orangered]
     )
-    savefig(bar1, joinpath(output_dir, "$(run_name)_barplot_n_lakes.png"))
 
-    # Plot 2: Total Volume
-    bar2 = bar(
-        df.label,
-        df.total_volume_m3 ./ 1e6,
-        legend = false,
-        title = "Total Lake Volume - $(run_name)",
-        xlabel = "Parameters (min_depth, smoothing, fill)",
-        ylabel = "Volume [10⁶ m³]",
-        xticks = :auto,
-        rotation = 45,
-        bar_width = 0.6,
-        color = :darkgreen,
-        size = (900, 400),
-        dpi = 200
-    )
-    savefig(bar2, joinpath(output_dir, "$(run_name)_barplot_total_volume.png"))
+    # Add number of lakes as annotations on top of bars
+    xpos = 1
+    bar_count_per_group = length(labels)
+    for row in eachrow(long_df)
+        annotate!(xpos, row.value + 0.03 * row.value, text("$(row.n_lakes)", :black, 8, :center))
+        xpos += 1
+    end
 
-    println("  📊 Saved summary plots for run: ", run_name)
+    # Save plot
+    outfile = joinpath(output_path, "_lakes_summary.png")
+    savefig(p, outfile)
+    println("✅ Saved plot: ", outfile)
 end
+
+
+
 

@@ -38,9 +38,9 @@ runs = [
 ]
 
 # TO CHANGE
-min_depths = [0.0, 2.0]           # meters
-smooth_coeffs = [0.0, 0.1]        # as fraction of thickness
-filling_fractions = [0.0, 0.75]   # fraction of supraglacial filling
+min_depths = 2.0 #[0.0, 2.0]           # meters
+smooth_coeffs = 0.0 #[0.0, 0.1]        # as fraction of thickness
+filling_fractions = 0. # [0.0, 0.75]   # fraction of supraglacial filling
 
 # Summary
 summaries = DataFrame()
@@ -48,7 +48,7 @@ summaries = DataFrame()
 for min_depth in min_depths
     for smooth_coeff in smooth_coeffs
         for fill_frac in filling_fractions
-            for run in runs
+            for run in runs[1:1]
 
                 println("\n🔷 Processing run: $(run.name), fill_frac=$(fill_frac)")
 
@@ -144,9 +144,6 @@ end
 CSV.write(joinpath(output_dir, "WWFS_lake_summary.csv"), summaries)
 println("\n✅ All runs complete. Summary saved to: ", output_dir)
 
-# Plot overview
-for run in runs
-    plot_run_summary(summaries, run.name, output_dir)
-end
+
 #heatmap_mindepth_vs_smoothing(summaries, "2024_October", :total_volume_m3, joinpath(output_dir, "2024_October_heatmap_vol.png"))
 #heatmap_mindepth_vs_smoothing(summaries, "2024_October", :n_lakes, joinpath(output_dir, "2024_October_heatmap_nlakes.png"))

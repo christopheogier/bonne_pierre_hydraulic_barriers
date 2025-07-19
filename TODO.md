@@ -1,8 +1,7 @@
 # TODO List
 
-- [ ] plot glacier outline over plots: plot_outline!
-- [ ] correctly plot mask and outlines, seems like not easy in julia
+- [ ] correctly plot mask and outlines (glacier and lakes), seems like not easy in julia. using CairoMakie
+- [ ] plot nicely subplots of ice thickness and bedrock as paper proof
 - [x] save mask of the largest sub. lakes for further analyses
-- [ ] plot outline or mask of the largest lake with the lakes depth
 - [ ] write main_stochastic.jl
 

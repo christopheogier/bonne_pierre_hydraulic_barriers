@@ -14,6 +14,7 @@ using Plots, Statistics
 using Contour  # for contour lines
 using StatsPlots
 using Images, ImageComponentAnalysis
+using DataFrames
 
 
 
@@ -30,7 +31,7 @@ Saves the figure if `savepath` is provided.
 
 TODO: Do not plot ice thickness of 0m (basically mask the data outside the glacier)
 """
-function plot_ice_thickness(rt::Raster; gpr_points=nothing, savepath=nothing, year = "unknown")
+function plot_ice_thickness_former(rt::Raster; gpr_points=nothing, savepath=nothing, year = "unknown")
     # Set default image size and resolution
     default(size=(1000, 800), dpi=300)
 
@@ -96,6 +97,41 @@ function plot_ice_thickness(rt::Raster; gpr_points=nothing, savepath=nothing, ye
 end
 
 
+function plot_ice_thickness(
+    rt::Raster; 
+    gpr_points::Union{Matrix{Float64}, Nothing}=nothing,
+    savepath::Union{String, Nothing}=nothing,
+    year::String="")
+
+    # Extract raster data and coordinates
+    data = Matrix(rt)
+    xs = coordinates(rt, dims=1)
+    ys = coordinates(rt, dims=2)
+
+    # Create figure and axis
+    fig = Figure(resolution=(1200, 1000))
+    ax = Axis(fig[1, 1]; title="Ice thickness $(year)", aspect=DataAspect())
+
+    # Plot ice thickness as heatmap
+    heatmap!(ax, xs, ys, data; colormap=:ice, colorrange=(minimum(data), maximum(data)))
+
+    # Add GPR points if provided
+    if gpr_points !== nothing
+        scatter!(ax, gpr_points[:, 1], gpr_points[:, 2]; color=:black, markersize=3)
+    end
+
+    Colorbar(fig[1, 2], ax; label="Ice thickness (m)")
+
+    if savepath !== nothing
+        save(savepath, fig)
+    else
+        display(fig)
+    end
+
+    return fig
+end
+
+
 """
     plot_bedrock(rt::Raster; savepath=nothing)
 
@@ -124,72 +160,55 @@ function plot_bedrock(rt::Raster; savepath=nothing)
 end
 
 
-function plot_lake_depth(lakes::Raster, savepath::String)
+function plot_lake_depth_with_outlines(lakes::Raster, surface::Raster, thickness::Raster, savepath::String; min_depth::Float64=2.0)
+    # Get coordinates and data
+    x = coordinates(lakes, 1)
+    y = coordinates(lakes, 2)
+    z = permutedims(parent(lakes))  # Makie expects (y,x) layout
 
-    # add outline of filtered lake (e.g. > 2m depth)
-    plt = heatmap(
-        lakes;
-        title = "Lake depth (m)",
-        colorbar_title = "Lake depth (m)",
-        color = :blues,
-        axis = false,
-        ticks = false,
-        size = (800, 700),
-        aspect_ratio = :equal
-    )
+    # Compute lake outlines where depth > min_depth
+    lake_mask = (lakes .> min_depth) .& (thickness .> 0) .& .!ismissing.(surface)
+    lake_labels = label_components(collect(Bool.(lake_mask)))
 
-    savefig(plt, savepath)
-    return plt
+    # Glacier outline
+    glacier_mask = (thickness .> 0) .& .!ismissing.(surface)
+
+    fig = Figure(resolution=(800, 700))
+    ax = Axis(fig[1,1], aspect=DataAspect(), title="Lake depth (>{min_depth} m)", xlabel="x", ylabel="y")
+
+    # Heatmap of lake depth
+    heatmap!(ax, x, y, z; colormap=:blues, colorrange=(0, maximum(z)), interpolate=false)
+
+    # Plot lake outlines
+    labeled_array = parent(lake_labels)
+    for label in 1:maximum(labeled_array)
+        mask = labeled_array .== label
+        if count(mask) == 0
+            continue
+        end
+        C = contours(mask; levels=[0.5])
+        for c in C
+            for level in c
+                lines!(ax, x[level[:,1]], y[level[:,2]], color=:red, linewidth=1.5)
+            end
+        end
+    end
+
+    # Plot glacier outline
+    glacier_mask_array = collect(Bool.(glacier_mask))
+    Cg = contours(glacier_mask_array; levels=[0.5])
+    for c in Cg
+        for level in c
+            lines!(ax, x[level[:,1]], y[level[:,2]], color=:black, linewidth=1.2)
+        end
+    end
+
+    Colorbar(fig[1,2], ax, label="Lake depth (m)")
+
+    savefig(fig, savepath)
+    println("✅ Saved lake depth plot with outlines to: ", savepath)
+    return fig
 end
-
-
-## IN PREP: PLOTTING OUTLINES AND MASK OVER heatmap
-
-function lake_outlines(lakes::AbstractArray{<:Real}, min_depth::Real=2.0)
-    # Create boolean mask of lakes deeper than min_depth
-    mask = lakes .> min_depth
-
-    # Label connected components (8-connectivity by default)
-    labeled = Images.label_components(mask)
-
-    # Create outline mask by subtracting eroded mask from original mask
-    # This leaves only the boundaries
-    se = ones(Bool, 3,3)  # structuring element for erosion
-    eroded = imerode(mask, se)
-    outline = mask .& .!eroded
-
-    return labeled, outline
-end
-
-
-"""
-    plot_lake_depth(lakes::Raster, savepath::String; largest_mask::Union{Nothing, BitMatrix}=nothing)
-
-"""
-
-function plot_lake_depth_with_outlines(lakes::AbstractArray{<:Real}, savepath::String; min_depth=2.0)
-    labeled, outline = lake_outlines(lakes, min_depth)
-
-    plt = heatmap(
-        lakes;
-        title = "Lake depth (m)",
-        colorbar_title = "Lake depth (m)",
-        color = :blues,
-        axis = false,
-        ticks = false,
-        size = (800, 700),
-        aspect_ratio = :equal,
-    )
-
-    # Overlay outlines in red with line thickness 1.5
-    # Using scatter with marker=:rect and alpha for a pixelated edge effect
-    xs, ys = findall(outline) |> unzip
-    scatter!(ys, xs; color=:red, markerstrokewidth=0, markersize=1, alpha=0.7)
-
-    savefig(plt, savepath)
-    return plt
-end
-
 
 
 function plot_hydraulic_head(phi::Raster, savepath::String)

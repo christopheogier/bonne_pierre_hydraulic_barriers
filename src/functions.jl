@@ -8,7 +8,7 @@ using DelimitedFiles
     load_ice_thickness(filepath::String) -> Raster
 
 Load the ice thickness raster from the given file path.
-Replace values < 0 (nodata) by NaN.
+Replace values < 0 (nodata) by 0.
 """
 function load_ice_thickness(filepath::String)
     rt = Raster(filepath)

@@ -12,7 +12,7 @@ const WWFS = WhereTheWaterFlowsSubglacially
 const WWF = WhereTheWaterFlows
 
 include("LakeAnalysis.jl")
-include("plot.jl")
+include("plots_makie.jl")
 using .LakeAnalysis
 
 datadir_WWFS_input = "/scratch-3/cogier/data/BonnePierre_input/WWFS_input"
@@ -38,9 +38,9 @@ runs = [
 ]
 
 # TO CHANGE
-min_depths = 2.0 #[0.0, 2.0]           # meters
-smooth_coeffs = 0.0 #[0.0, 0.1]        # as fraction of thickness
-filling_fractions = 0. # [0.0, 0.75]   # fraction of supraglacial filling
+min_depths = 0.#[0.0, 2.0]           # meters
+smooth_coeffs = 0.1#[0.0, 0.1]        # as fraction of thickness
+filling_fractions =  0.#[0.0, 0.75]   # fraction of supraglacial filling
 
 # Summary
 summaries = DataFrame()
@@ -48,7 +48,7 @@ summaries = DataFrame()
 for min_depth in min_depths
     for smooth_coeff in smooth_coeffs
         for fill_frac in filling_fractions
-            for run in runs[1:1]
+            for run in runs
 
                 println("\n🔷 Processing run: $(run.name), fill_frac=$(fill_frac)")
 
@@ -103,11 +103,12 @@ for min_depth in min_depths
                 # Save outputs
                 #write(out_prefix * "_lakes_free.tif", lakes_free_surf; force=true)
                 #write(out_prefix * "_phi.tif", phi; force=true)
-                println("  ➤ Saved 'lakes_free_surf' and 'phi' rasters.")
+                #write(out_prefix * "_area.tif", areas[1]; force=true)
+                #println("  ➤ Saved 'lakes_free_surf' and 'phi' rasters.")
 
                 # Analyze lakes
                 println("  Analyzing lake_free_surface...")
-                analysis = analyze_lakes(lakes_free_surf, surface, thickness; min_depth=min_depth)
+                analysis = analyze_lakes(lakes_free_surf, thickness; min_depth=min_depth)
 
                 df = DataFrame(
                     run = run.name,
@@ -122,15 +123,17 @@ for min_depth in min_depths
                     largest_single_volume_m3 = analysis.LargestLake.volume
                 )
 
-                # Optionally save lake labels
-                # write(out_prefix * "_lake_labels.tif", Raster(analysis.labels); force=true)
-
                 # Plotting
-                plot_lake_depth(lakes_free_surf, out_prefix * "_lakes_free.png")
-                # plot_hydraulic_head(phi, out_prefix * "_phi.png")
-                
 
+                plot_lake_depth(lakes_free_surf,thickness,analysis,
+                    phi,out_prefix * "_lakes.png";min_depth = analysis.min_depth,show_all_lakes = true, area = areas[1])
 
+                #plot_hydraulic_head(phi, out_prefix * "_phi.png")
+
+                # plot upslope area
+                #plot_hydraulic_head_and_flux(phi,areas[1],thickness,out_prefix * "_phi_flux.png";min_threshold = 1e5,max_threshold = 1e6)
+
+                                
                 # Append to summary
                 append!(summaries, df)
 

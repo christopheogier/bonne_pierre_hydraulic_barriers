@@ -1,5 +1,6 @@
 using CairoMakie
-
+include("LakeAnalysis.jl")
+using .LakeAnalysis
 
 # --- Your JoG style setup ---
 two_column_cm   = 17.8
@@ -36,16 +37,18 @@ function get_axes_and_matrix(rt::Raster)
     x, y = collect.(dims(rt))
     x = Float32.(x)
     y = Float32.(y)
-    Z = Float32.(Matrix(rt))  # Ensure Z[y, x]
 
-    # Flip y and Z if y is descending (top to bottom)
-    #if y[2] < y[1]
-        #y = reverse(y)
-        #Z = reverse(Z, dims=1)
-    #end
+    raw = Matrix(rt)
+    Z = Array{Float32}(undef, size(raw))
+
+    for j in axes(raw, 2), i in axes(raw, 1)
+        val = raw[i, j]
+        Z[i, j] = ismissing(val) ? NaN32 : Float32(val)
+    end
 
     return x, y, Z
 end
+
 
 
 
@@ -63,12 +66,12 @@ function plot_ice_thickness(rt; gpr_points=nothing, savepath=nothing)
     y_max = y[max_idx[2]]
 
     fig = Figure(size=(800, 600))
-    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title="Ice Thickness (m)")
+    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title="Ice thickness (m)")
 
     # Heatmap and contours
     hm = heatmap!(ax, x, y, Z; colormap=Reverse(:ice), colorrange=(0, vmax))
     # ice thickness countour
-    contour!(ax, x, y, Z; levels=10:20:vmax, color=:black)
+    contour!(ax, x, y, Z; levels=0:20:vmax, color=:black)
     contour!(ax, x, y, Z_full; levels=0.1:0.1, linewidth=0.5, color=:black)
 
     # Max point annotation
@@ -106,7 +109,7 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
     vmax = ceil(maximum(filter(x -> !isnan(x),skipmissing(Z))), digits=0)
 
     fig = Figure(size=(800, 600))
-    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title="Bedrock elevation (m a.s.l.)")
+    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title="Bedrock elevation")
 
     hm = heatmap!(ax, x, y, Z; colormap=:thermal, colorrange=(vmin, vmax))
     # 20m contour lines
@@ -130,7 +133,7 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
     ticks_labels = string.(Int.(round.(ticks_vals)))
 
     # Put colorbar into fig[1, 2], with the same height as ax by linking its height
-    cb = Colorbar(fig[1, 2], hm; ticks=(ticks_vals, ticks_labels), label="Elevation (m)")
+    cb = Colorbar(fig[1, 2], hm; ticks=(ticks_vals, ticks_labels), label="Elevation (m a.s.l.)")
     # Match colorbar height to axis height
     cb.height[] = 350  # or whatever pixel height fits your layout better
 
@@ -142,3 +145,210 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
 
     return fig
 end
+
+function plot_lake_depth(
+    lakes::Raster,
+    thickness::Raster,
+    analysis::LakeAnalysisResult,
+    phi::Union{Raster, Nothing},
+    savepath::String;
+    min_depth::Float64 = 2.0,
+    show_all_lakes::Bool = false,
+    area::Union{Raster, Nothing} = nothing,
+    area_threshold::Float64 = 1e5
+)
+    glacier_mask = thickness .> 0
+    x, y, Z = get_axes_and_matrix(lakes)
+    mask_array = collect(Bool.(glacier_mask))
+
+    # Apply min_depth and glacier mask
+    Z_lake = copy(Z)
+    Z_lake[Z_lake .< min_depth] .= NaN
+    Z_lake[.!mask_array] .= NaN
+    Z_lake[Z_lake .== 0] .= NaN
+
+    finite_vals = Z_lake[isfinite.(Z_lake)]
+    if isempty(finite_vals)
+        @warn "No valid lake pixels to plot for $savepath"
+        return nothing
+    end
+
+    vmin = min_depth
+    vmax = maximum(finite_vals)
+
+    fig = Figure(size=(800, 600))
+    ax = Axis(fig[1, 1];
+        aspect = DataAspect(),
+        xlabel = "X (m)",
+        ylabel = "Y (m)",
+        title = "Water pocket depth (m > $(min_depth))"
+    )
+
+    # Plot lake depth
+    hm = heatmap!(ax, x, y, Z_lake;
+        colormap = :blues,
+        colorrange = (vmin, vmax)
+    )
+
+    # Plot largest lake outline
+    if any(analysis.LargestLake.mask)
+        labeled = Int.(analysis.LargestLake.mask)
+        #contour!(ax, x, y, labeled; levels=[0.5], color=:red, linewidth=1.5)
+    end
+
+    # Optionally plot all lake masks
+    if show_all_lakes
+        for (_, mask) in analysis.lake_masks
+            if any(mask)
+                labeled = Int.(mask)
+                contour!(ax, x, y, labeled; levels=[0.5], color=:red, linewidth=1)
+            end
+        end
+    end
+
+    # Overlay upslope area outline (if provided)
+    if area !== nothing
+        _, _, Z_area = get_axes_and_matrix(area)
+        area_mask = (Z_area .> area_threshold) .& mask_array  
+        area_int = Int.(area_mask)
+        contour!(ax, x, y, area_int;
+            levels = [0.5],
+            color = (:darkblue,0.8),
+            linewidth = 1.0
+        )
+    end
+
+    # Overlay hydraulic head contours
+    if phi !== nothing
+        _, _, Z_phi = get_axes_and_matrix(phi)
+        Z_phi[.!mask_array] .= NaN
+        vmin_phi = floor(minimum(Z_phi[isfinite.(Z_phi)]), digits=0)
+        vmax_phi = ceil(maximum(Z_phi[isfinite.(Z_phi)]), digits=0)
+        levels = collect(vmin_phi:10:vmax_phi)
+        contour!(ax, x, y, Z_phi; levels=levels, linewidth=0.8, color=:black)
+    end
+
+    # Glacier outline
+    contour!(ax, x, y, mask_array; levels=[0.5], color=:black, linewidth=1.2)
+
+    # Volume annotations
+    total_vol = round(Int, sum(analysis.stats.volume))
+    max_vol = round(Int, analysis.LargestLake.volume)
+
+    text!(
+        ax, x[1], y[end],
+        text = "Total volume: $(total_vol) m³\nLargest water pocket: $(max_vol) m³",
+        halign = :left, valign = :top, fontsize = 10, color = :black
+    )
+
+    # Generate nice intermediate ticks between vmin and vmax, e.g. 5 ticks total
+    nticks = 4
+    ticks_vals = range(vmin, vmax, length=nticks)
+    ticks_labels = string.(Int.(round.(ticks_vals)))
+    # colorbar
+    cb = Colorbar(fig[1, 2], hm; ticks=(ticks_vals, ticks_labels), label = "Water pocket depth (m)")
+    cb.height[] = 350
+
+
+
+    # Legends
+    lines!(ax, [NaN], [NaN]; color = :black, linewidth = 0.8, label = "Hydraulic head (10m intervals)")
+    lines!(ax, [NaN], [NaN]; color = :red, linewidth = 1.0, label = "Water pocket outlines")
+    if area !== nothing
+        lines!(ax, [NaN], [NaN]; color = :darkblue, linewidth = 1.0, label = "Upslope area > $(Int(area_threshold)) m²")
+    end
+
+    Legend(fig, ax; tellwidth = false, tellheight = false, halign = :left, valign = :top, framevisible = false)
+
+    save(savepath, fig; px_per_unit = 4)
+    println("✅ Saved lake depth plot with outlines and annotations to: $savepath")
+    return fig
+end
+
+
+function plot_hydraulic_head_and_flux(
+    phi::Raster,
+    upslope_area::Raster,
+    thickness::Raster,
+    savepath::String;
+    min_threshold::Float64 = 1e4,
+    max_threshold::Float64 = 1e6
+)
+    x, y, Z_phi = get_axes_and_matrix(phi)
+    _, _, Z_flux = get_axes_and_matrix(upslope_area)
+
+    # Hydraulic head contours
+    vals_phi = Z_phi[isfinite.(Z_phi)]
+    if isempty(vals_phi)
+        @warn "No hydraulic head values to plot"
+        return nothing
+    end
+    vmin_phi = floor(minimum(vals_phi), digits=0)
+    vmax_phi = ceil(maximum(vals_phi), digits=0)
+    levels_phi = collect(vmin_phi:20:vmax_phi)
+
+    fig = Figure(size=(800, 600))
+    ax = Axis(fig[1, 1];
+        aspect = DataAspect(),
+        xlabel = "X (m)",
+        ylabel = "Y (m)",
+        title = "Upslope area and hydraulic head"
+    )
+
+    # Base heatmap
+    hm = heatmap!(ax, x, y, Z_flux;
+        colormap = :blues,
+        colorrange = (min_threshold, max_threshold),
+        lowclip = :white,
+        highclip = :black
+    )
+
+    # Build binary mask where upslope area exceeds max_threshold
+    highlight_mask = Z_flux .> min_threshold
+    highlight_int = Int.(highlight_mask)
+
+    # Add contour outline — adjust linewidth for visual thickness
+    contour!(ax, x, y, highlight_int;
+        levels = [0.5],       # Contour between 0 and 1
+        color = :red,
+        linewidth = 1.5        # Try 2.0 or 3.0 for thicker effect
+    )
+
+    # Contours of hydraulic head
+    contour!(ax, x, y, Z_phi; levels=levels_phi, linewidth=0.6, color=:black)
+
+    # Glacier outline
+    glacier_mask = thickness .> 0
+    mask_array = collect(Bool.(glacier_mask))
+    contour!(ax, x, y, mask_array; levels=[0.5], color=:black, linewidth=1.2)
+
+    # Colorbar synced with main heatmap
+    cb = Colorbar(fig[1, 2], hm;
+        label = "Upslope area (m²)",
+        ticks = [min_threshold, max_threshold]
+    )
+    cb.height[] = 350
+
+    # Add dummy line for legend entry
+    lines!(ax, [NaN], [NaN];
+        color = :red,
+        linewidth = 1.5,
+        label = "Upslope area > $(Int(max_threshold)) m²"
+    )
+
+    # Add legend in top-left of axis
+    Legend(fig, ax;
+        tellwidth = false,
+        tellheight = false,
+        halign = :left,
+        valign = :top,
+        framevisible = false
+    )
+
+
+    save(savepath, fig; px_per_unit=4)
+    println("✅ Saved hydraulic head and flux plot to: $savepath")
+    return fig
+end
+
+

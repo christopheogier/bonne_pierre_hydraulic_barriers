@@ -69,7 +69,7 @@ ice_thickness_2024_oct = compute_ice_thickness(surface_2024_oct_resamp, bedrock)
 
 # Plot all four ice thickness maps
 ice_thickness_rasters = [
-    (ice_thickness_2024_nov_resamp, "ice_thickness_resamp"),
+    (ice_thickness_2024_nov_resamp, "ice_thickness_2024_nov_resamp"),
     (ice_thickness_2021, "ice_thickness_2021"),
     (ice_thickness_2024_june, "ice_thickness_2024_june"),
     (ice_thickness_2024_oct, "ice_thickness_2024_oct")

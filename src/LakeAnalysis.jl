@@ -16,17 +16,18 @@ struct LakeAnalysisResult
     stats::DataFrame
     min_depth::Float64
     LargestLake::LargestLake
+    lake_masks::Dict{Int, BitMatrix} 
 end
 
 function analyze_lakes(
     lakes::Raster,
-    surface::Raster,
+
     thickness::Raster;
     min_depth::Float64 = 0.0
 )
     dx = step(dims(lakes)[1])
     pixel_area = dx^2
-    ice_mask = (thickness .> 0) .& .!ismissing.(surface)
+    ice_mask = (thickness .> 0) 
     mask_lakes = (lakes .> min_depth) .& ice_mask
 
     labeled_image = Images.label_components(collect(Bool.(mask_lakes)))
@@ -36,24 +37,31 @@ function analyze_lakes(
     max_volume, max_label = -Inf, -1
 
     lakes_array = collect(lakes)  # avoid repeated conversion
+    lake_masks = Dict{Int, BitMatrix}()
+
     for label in 1:maximum(labeled_image)
         mask_current = labeled_image .== label
         volume = sum(lakes_array[mask_current]) * pixel_area
         area = sum(mask_current) * pixel_area
         push!(lake_volumes, volume)
         push!(lake_areas_m2, area)
+
+        lake_masks[label] = mask_current
+
         if volume > max_volume
             max_volume = volume
             max_label = label
         end
     end
 
+
     measurements.volume = lake_volumes
     measurements.area_m2 = lake_areas_m2
 
     largest = LargestLake(max_volume, labeled_image .== max_label)
 
-    return LakeAnalysisResult(labeled_image, measurements, min_depth, largest)
+    return LakeAnalysisResult(labeled_image, measurements, min_depth, largest, lake_masks)
+
 end
 
 function boxplot_lakes(lakes::LakeAnalysisResult, col_str::AbstractString)

@@ -1,6 +1,6 @@
 ### main.jl
 using Pkg
-Pkg.activate("/scratch-1/cogier/hydraulic_barriers/")
+Pkg.activate("/scratch-3/cogier/hydraulic_barriers/")
 import ArchGDAL
 using Dates
 using Rasters
@@ -38,9 +38,9 @@ runs = [
 ]
 
 # TO CHANGE
-min_depths = 0.#[0.0, 2.0]           # meters
+min_depths = 2.#[0.0, 2.0]           # meters
 smooth_coeffs = 0.1#[0.0, 0.1]        # as fraction of thickness
-filling_fractions =  0.#[0.0, 0.75]   # fraction of supraglacial filling
+filling_fractions = 0.# [0.0, 0.75]   # fraction of supraglacial filling
 
 # Summary
 summaries = DataFrame()

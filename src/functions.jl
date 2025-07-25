@@ -1,41 +1,41 @@
-
+# function.jl
 
 using Rasters
 using ArchGDAL
-using DelimitedFiles
+using CSV, DataFrames, NearestNeighbors
 
 """
-    load_ice_thickness(filepath::String) -> Raster
+    clean_raster(r::Raster) -> Raster{Float32}
 
-Load the ice thickness raster from the given file path.
-Replace values < 0 (nodata) by 0.
+Replaces `missing` values with `NaN` and ensures the result is a `Float32` raster.
 """
+function clean_raster(r::Raster)
+    A = Array(r)
+    cleaned_array = Float32[ismissing(v) ? NaN32 : v for v in A]
+    cleaned_raster = Raster(reshape(cleaned_array, size(A)), dims(r))
+    return cleaned_raster
+end
+
+
+
 function load_ice_thickness(filepath::String)
     rt = Raster(filepath)
+    rt = clean_raster(rt)
     rt[rt .< 0] .= 0
     return rt
 end
 
-"""
-    load_bedrock(filepath::String) -> Raster
-
-Load the bedrock elevation raster from the given file path.
-Replace values < 0 (nodata) by NaN.
-"""
 function load_bedrock(filepath::String)
     rt = Raster(filepath)
+    rt = clean_raster(rt)
     rt[rt .< 0] .= NaN
     return rt
 end
 
 function load_surface(filepath::String, bed::Raster)
-    # Load raster
     surface = Raster(filepath)
-    # Crop to bed extent
     surface_cr = crop(surface; to=bed)
-    # Replace negative values with NaN
-    surface_cr[surface_cr .< 0] .= NaN
-    return surface_cr
+    return clean_raster(surface_cr)
 end
 
 """
@@ -44,17 +44,21 @@ end
 Load GPR point coordinates from a text file with columns: x, y, thickness.
 Returns Nx2 matrix.
 """
+
 function load_gpr_points(filepath::String)
-    data = readdlm(filepath, '\t', skipstart=1)
-    return data[:, 1:2]
+    df = CSV.read(filepath, DataFrame; header=false)
+    return Matrix(df[:, 1:2])
 end
+
 
 """
     compute_ice_thickness(surface::Raster, bed::Raster) -> Raster
 
 Computes ice thickness as the difference between a glacier surface raster and a bedrock raster.
 The bed raster is resampled to match the surface raster grid using bilinear interpolation.
-Negative thickness values are set to 0, and invalid surface elevations (e.g., < 0) are masked as 0.
+
+- If either surface or bed value is `missing`, the result is set to `NaN`.
+- If the computed thickness is negative, it is clamped to 0.0.
 
 # Arguments
 - `surface::Raster`: Glacier surface elevation raster (e.g. LiDAR or photogrammetry).
@@ -64,25 +68,20 @@ Negative thickness values are set to 0, and invalid surface elevations (e.g., < 
 - `Raster`: Ice thickness raster aligned with `surface`.
 """
 function compute_ice_thickness(surface::Raster, bed::Raster)
-    # Crop surface raster to bed extent
-    #surface_cropped = crop(surface; to=bed)
-
-    # Optionally mask invalid surface elevations (uncomment if needed)
-    # surface_cropped[surface_cropped .< 0] .= NaN
-
-    # Resample bedrock to match surface grid/resolution
     bed_resamp = resample(bed; to=surface, method=:bilinear)
 
-    # Compute thickness (surface minus bed)
-    ice_thickness = surface .- bed_resamp
+    # Compute thickness: surface - bed
+    thickness_array = map((s, b) -> begin
+        if ismissing(s) || ismissing(b)
+            NaN
+        else
+            val = s - b
+            val < 0 ? 0.0 : val
+        end
+    end, surface, bed_resamp)
 
-    # Set negative thickness to zero
-    ice_thickness[ice_thickness .< 0] .= 0
+    return Raster(Float32.(thickness_array), dims(surface))
 
-    # Replace NaN with zero (if any)
-    ice_thickness[isnan.(ice_thickness)] .= 0
-
-    return ice_thickness
 end
 
 
@@ -102,3 +101,61 @@ function compute_glacier_outline(thickness::Raster)
 
     return outline_coords  # Vector of vectors of (x, y)
 end
+
+
+module UncUtils
+
+using Rasters, CSV, DataFrames, NearestNeighbors
+import Contour: contour, lines, coordinates
+
+
+export load_and_extend_gpr, compute_distance_to_gpr, unc_propagate, extract_outline_from_thickness
+
+function extract_outline_from_thickness(thickness::Raster)
+    x, y = collect.(dims(thickness))
+    Z = Matrix(thickness) .> 0  # binary mask
+
+    contourset = contour(x, y, Z, 0.5)  # get isolines at 0.5 to outline glacier
+
+    outline_points = []
+
+    for line in lines(contourset)
+        xs, ys = coordinates(line)
+        append!(outline_points, zip(xs, ys))
+    end
+
+    return outline_points  # Vector of (x, y) tuples
+end
+
+function load_and_extend_gpr(gpr_path::String, outline_points::Vector{Tuple{Float64, Float64}})
+    gpr_df = CSV.read(gpr_path, DataFrame; header=false)
+    rename!(gpr_df, [:x, :y, :h, :h1, :h2])
+    for (x, y) in outline_points
+        push!(gpr_df, (; x, y, h = 0.0, h1 = 0.0, h2 = 0.0))
+    end
+    return gpr_df
+end
+
+function compute_distance_to_gpr(gpr_df::DataFrame, template_raster::Raster)
+    x_dim, y_dim = dims(template_raster)
+    xs, ys = x_dim.val, y_dim.val
+    gpr_points = hcat(gpr_df.x, gpr_df.y)'
+    tree = KDTree(gpr_points)
+    distance_map = Array{Float64}(undef, length(xs), length(ys))
+    for (i, x) in enumerate(xs)
+        for (j, y) in enumerate(ys)
+            point = [x, y]
+            _, dists = knn(tree, point, 1)
+            distance_map[i, j] = dists[1]
+        end
+    end
+    return Raster(distance_map, dims(template_raster))
+end
+
+function unc_propagate(dist_raster::Raster, h_mean::Real) # so that float or integer works
+    u_minus  = (-0.27 .- 0.00077 .* dist_raster) .* h_mean
+    u_plus = (0.08  .+ 0.00083 .* dist_raster) .* h_mean  # note this is inverted from Grabe et al because here u is for the bedrock, not the ice thickness
+    return u_minus, u_plus
+end
+
+end # module

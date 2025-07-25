@@ -1,7 +1,9 @@
-using Pkg
-Pkg.activate("/scratch-1/cogier/hydraulic_barriers/")
-# Pkg.instantiate()  # Uncomment if you want to install packages
+# prepare.jl
 
+using Pkg
+Pkg.activate("/scratch-3/cogier/hydraulic_barriers/")
+# Pkg.instantiate()  # Uncomment if you want to install packages
+using ArchGDAL
 using Dates
 using Printf
 using Rasters
@@ -28,6 +30,8 @@ bedrock = load_bedrock(joinpath(datadir_in, "BED_10m_l93_20smooth.tif"))
 ice_thickness_2024_nov = load_ice_thickness(joinpath(datadir_in, "Hall_10m_l93_GlaTE20.asc"))  # ice thickness from air eth and glate on 6.11.2024
 
 # load bedrock plus and minus from GPR
+bedrock_gpr_plus_10m = load_bedrock(joinpath(datadir_in, "BED_10m_l93_20smooth_+5m.tif"))
+bedrock_gpr_minus_10m = load_bedrock(joinpath(datadir_in, "BED_10m_l93_20smooth_-5m.tif"))
 
 
 # Load and clean surface DEM cropped to bedrock extent
@@ -41,7 +45,9 @@ surface_2024_oct_resamp = resample(surface_2024_oct; to=surface_2021_cr, method=
 # Resample bedrock and ice thickness to surface 2021 resolution
 bed_resamp = resample(bedrock; to=surface_2021_cr, method=:bilinear)
 ice_thickness_2024_nov_resamp = resample(ice_thickness_2024_nov; to=surface_2021_cr, method=:bilinear)
-
+bedrock_gpr_plus = resample(bedrock_gpr_plus_10m; to=bed_resamp, method=:bilinear)
+bedrock_gpr_minus = resample(bedrock_gpr_minus_10m; to=bed_resamp, method=:bilinear)
+# mask
 mask = bed_resamp .> 0
 
 # Load GPR points
@@ -53,7 +59,7 @@ vals = extract(ice_thickness_2024_nov, geometries)
 # (assumes single-layer raster — extract returns NamedTuple with a single key besides `geometry`)
 raster_field = first(keys(vals[1]))  # e.g. :geometry or :ice_thickness
 raster_name = filter(k -> k != :geometry, keys(vals[1]))[1]  # get actual raster name key
-mask = [v[raster_name] > 0 && !ismissing(v[raster_name]) for v in vals]
+mask = [!ismissing(v[raster_name]) && v[raster_name] > 0 for v in vals]
 # Step 5: Filter GPR points
 gpr_points = gpr_points[mask, :]
 
@@ -83,24 +89,10 @@ end
 # bedrock
 plot_bedrock(bed_resamp; gpr_points=gpr_points, savepath=joinpath(plots_dir, "bedrock_elevation_resamp.png"), glacier_outline_raster = ice_thickness_2024_nov_resamp)
 
-
-"""
-plot_ice_thickness(
-    ice_thickness_resamp;
-    gpr_points = gpr_points,
-    savepath = joinpath(plots_dir, "ice_thickness_november2024.png"),
-    year = "November 2024"
-)
-plot_ice_thickness(ice_thickness_2021; gpr_points = nothing, savepath = joinpath(plots_dir, "ice_thickness_july2021.png"), year="July 2021")
-plot_ice_thickness(ice_thickness_2024_june; gpr_points = nothing, savepath = joinpath(plots_dir, "ice_thickness_june2024.png"), year="June 2024")
-plot_ice_thickness(ice_thickness_2024_oct; gpr_points = nothing, savepath = joinpath(plots_dir, "ice_thickness_oct2024.png"), year="October 2024")
-
-plot_bedrock(
-    bed_resamp;
-    savepath = joinpath(plots_dir, "bedrock_elevation_resamp.png")
-)
-"""
-
+println("⛏ eltype diagnostics before write():")
+println("  eltype(ice_thickness_2024_oct) = ", eltype(ice_thickness_2024_oct))
+println("  eltype(bedrock)                = ", eltype(bedrock))
+println("  eltype(surface_2024_oct)       = ", eltype(surface_2024_oct))
 
 
 # save data for WWFS input:
@@ -109,6 +101,8 @@ write(joinpath(datadir_WWFS_input, "ice_thickness_2024_june.tif"), ice_thickness
 write(joinpath(datadir_WWFS_input, "ice_thickness_2024_oct.tif"), ice_thickness_2024_oct,force=true)
 write(joinpath(datadir_WWFS_input, "ice_thickness_2024_november_glate.tif"), ice_thickness_2024_nov_resamp,force=true) # same as october??
 write(joinpath(datadir_WWFS_input, "bedrock_resamp_1m.tif"), bed_resamp,force=true)
+write(joinpath(datadir_WWFS_input, "bedrock_gpr_plus_1m.tif"),bedrock_gpr_plus, force=true)
+write(joinpath(datadir_WWFS_input, "bedrock_gpr_minus_1m.tif"), bedrock_gpr_minus, force=true)
 write(joinpath(datadir_WWFS_input, "surface_2021_cr.tif"), surface_2021_cr,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"), surface_2024_oct_resamp,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_june.tif"), surface_2024_june,force=true)

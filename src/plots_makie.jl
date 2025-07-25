@@ -1,3 +1,5 @@
+#plot_makie.jl
+
 using CairoMakie
 include("LakeAnalysis.jl")
 using .LakeAnalysis
@@ -49,7 +51,13 @@ function get_axes_and_matrix(rt::Raster)
     return x, y, Z
 end
 
-
+function finite_minmax(Z)
+    vals = filter(isfinite, vec(Z))
+    if isempty(vals)
+        error("No finite values in array.")
+    end
+    return minimum(vals), maximum(vals)
+end
 
 
 function plot_ice_thickness(rt; gpr_points=nothing, savepath=nothing)
@@ -60,7 +68,7 @@ function plot_ice_thickness(rt; gpr_points=nothing, savepath=nothing)
     x, y, Z = get_axes_and_matrix(rt_masked)
     _, _, Z_full = get_axes_and_matrix(rt)
 
-    vmax = ceil(maximum(Z_full))
+    vmin, vmax = finite_minmax(Z_full)
     max_idx = argmax(Z_full)
     x_max = x[max_idx[1]]
     y_max = y[max_idx[2]]
@@ -72,7 +80,8 @@ function plot_ice_thickness(rt; gpr_points=nothing, savepath=nothing)
     hm = heatmap!(ax, x, y, Z; colormap=Reverse(:ice), colorrange=(0, vmax))
     # ice thickness countour
     contour!(ax, x, y, Z; levels=0:20:vmax, color=:black)
-    contour!(ax, x, y, Z_full; levels=0.1:0.1, linewidth=0.5, color=:black)
+    glacier_mask = .!isnan.(Z_full) .& (Z_full .> 0)
+    contour!(ax, x, y, Int.(glacier_mask); levels=[0.5], color=:black, linewidth=0.8)
 
     # Max point annotation
     #scatter!(ax, [x_max], [y_max]; color=:red, marker=:xcross, markersize=8)
@@ -105,8 +114,8 @@ end
 
 function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_raster=nothing)
     x, y, Z = get_axes_and_matrix(rt)
-    vmin = floor(minimum(filter(x -> !isnan(x),skipmissing(Z))), digits=0)
-    vmax = ceil(maximum(filter(x -> !isnan(x),skipmissing(Z))), digits=0)
+    
+    vmin, vmax = finite_minmax(Z)
 
     fig = Figure(size=(800, 600))
     ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title="Bedrock elevation")
@@ -146,6 +155,58 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
     return fig
 end
 
+function plot_uncertainty_bed(r1::Raster, r2::Raster, title::String, subtitle1::String, subtitle2::String, savepath::String)
+    x, y, Z1 = get_axes_and_matrix(r1)
+    _, _, Z2 = get_axes_and_matrix(r2)
+
+    finite_vals = vcat(Z1[isfinite.(Z1)], Z2[isfinite.(Z2)])
+    if isempty(finite_vals)
+        @warn "No valid values to plot for $savepath"
+        return nothing
+    end
+
+    # Define actual data bounds and symmetric color range for white at 0
+    vmin_data = minimum(finite_vals)
+    vmax_data = maximum(finite_vals)
+    vmax_abs = ceil(max(abs(vmin_data), abs(vmax_data)))
+    colorrange = (-vmax_abs, vmax_abs)
+    cmap = cgrad(:balance, scale=colorrange)
+
+    # Define ticks (integers, always including 0, and both extrema)
+    nticks = 5
+    ticks_vals = collect(round.(range(vmin_data, vmax_data; length=nticks)))
+    if 0 ∉ ticks_vals
+        push!(ticks_vals, 0)
+        sort!(ticks_vals)
+    end
+    ticks_labels = string.(Int.(ticks_vals))
+
+    # Begin plotting
+    fig = Figure(size=(900, 450), fontsize=10)
+
+    ax1 = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title=subtitle1)
+    hm1 = heatmap!(ax1, x, y, Z1; colormap=cmap, colorrange=colorrange)
+
+    ax2 = Axis(fig[1, 2]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title=subtitle2)
+    heatmap!(ax2, x, y, Z2; colormap=cmap, colorrange=colorrange)
+
+    # Colorbar with clean integer ticks, 0 centered
+    Colorbar(fig[1, 3], hm1;
+        label = "Uncertainty (m)",
+        height = 300,
+        ticks = (ticks_vals, ticks_labels)
+    )
+
+    Label(fig[0, :], title; fontsize=12, font=:bold)
+
+    save(savepath, fig; px_per_unit=4)
+    println("✅ Saved uncertainty plot to: $savepath")
+
+    return fig
+end
+
+
+
 function plot_lake_depth(
     lakes::Raster,
     thickness::Raster,
@@ -167,14 +228,9 @@ function plot_lake_depth(
     Z_lake[.!mask_array] .= NaN
     Z_lake[Z_lake .== 0] .= NaN
 
-    finite_vals = Z_lake[isfinite.(Z_lake)]
-    if isempty(finite_vals)
-        @warn "No valid lake pixels to plot for $savepath"
-        return nothing
-    end
-
+    
+    vmin, vmax = finite_minmax(Z_full)
     vmin = min_depth
-    vmax = maximum(finite_vals)
 
     fig = Figure(size=(800, 600))
     ax = Axis(fig[1, 1];
@@ -278,13 +334,8 @@ function plot_hydraulic_head_and_flux(
     _, _, Z_flux = get_axes_and_matrix(upslope_area)
 
     # Hydraulic head contours
-    vals_phi = Z_phi[isfinite.(Z_phi)]
-    if isempty(vals_phi)
-        @warn "No hydraulic head values to plot"
-        return nothing
-    end
-    vmin_phi = floor(minimum(vals_phi), digits=0)
-    vmax_phi = ceil(maximum(vals_phi), digits=0)
+    vmin_phi, vmax_phi = finite_minmax(Z_phi)
+
     levels_phi = collect(vmin_phi:20:vmax_phi)
 
     fig = Figure(size=(800, 600))

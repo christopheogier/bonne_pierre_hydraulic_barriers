@@ -1,6 +1,6 @@
 ### plot
 using Pkg
-Pkg.activate("/scratch-1/cogier/hydraulic_barriers/")
+Pkg.activate("/scratch-3/cogier/hydraulic_barriers/")
 using CSV, DataFrames
 include("plots_makie.jl")  # or "plot_summary_overview.jl" if separated
 using Rasters

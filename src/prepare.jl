@@ -30,7 +30,7 @@ bedrock = load_bedrock(joinpath(datadir_in, "BED_10m_l93_20smooth.tif"))
 ice_thickness_2024_nov = load_ice_thickness(joinpath(datadir_in, "Hall_10m_l93_GlaTE20.asc"))  # ice thickness from air eth and glate on 6.11.2024
 
 # load bedrock plus and minus from GPR
-bedrock_gpr_plus_10m = load_bedrock(joinpath(datadir_in, "BED_10m_l93_20smooth_+5m.tif"))
+bedrock_gpr_plus_10m = load_bedrock(joinpath(datadir_in, "BED_10m_l93_20smooth_+5m.tif")) # error name + instead of - ???
 bedrock_gpr_minus_10m = load_bedrock(joinpath(datadir_in, "BED_10m_l93_20smooth_-5m.tif"))
 
 
@@ -47,6 +47,11 @@ bed_resamp = resample(bedrock; to=surface_2021_cr, method=:bilinear)
 ice_thickness_2024_nov_resamp = resample(ice_thickness_2024_nov; to=surface_2021_cr, method=:bilinear)
 bedrock_gpr_plus = resample(bedrock_gpr_plus_10m; to=bed_resamp, method=:bilinear)
 bedrock_gpr_minus = resample(bedrock_gpr_minus_10m; to=bed_resamp, method=:bilinear)
+
+# Compute GPR uncertainty maps 
+u_plus_gpr  = bedrock_gpr_plus .- bed_resamp    # ≥ 0
+u_minus_gpr = bedrock_gpr_minus .- bed_resamp   # ≤ 0
+
 # mask
 mask = bed_resamp .> 0
 
@@ -89,10 +94,10 @@ end
 # bedrock
 plot_bedrock(bed_resamp; gpr_points=gpr_points, savepath=joinpath(plots_dir, "bedrock_elevation_resamp.png"), glacier_outline_raster = ice_thickness_2024_nov_resamp)
 
-println("⛏ eltype diagnostics before write():")
-println("  eltype(ice_thickness_2024_oct) = ", eltype(ice_thickness_2024_oct))
-println("  eltype(bedrock)                = ", eltype(bedrock))
-println("  eltype(surface_2024_oct)       = ", eltype(surface_2024_oct))
+# plot gpr-bed Uncertainties
+plot_uncertainty_bed(u_plus_gpr, u_minus_gpr,
+    "Bedrock: GPR Uncertainty", "GPR +5 m", "GPR -5 m",
+    joinpath(plots_dir, "bedrock_gpr_uncertainty.png"))
 
 
 # save data for WWFS input:
@@ -101,8 +106,10 @@ write(joinpath(datadir_WWFS_input, "ice_thickness_2024_june.tif"), ice_thickness
 write(joinpath(datadir_WWFS_input, "ice_thickness_2024_oct.tif"), ice_thickness_2024_oct,force=true)
 write(joinpath(datadir_WWFS_input, "ice_thickness_2024_november_glate.tif"), ice_thickness_2024_nov_resamp,force=true) # same as october??
 write(joinpath(datadir_WWFS_input, "bedrock_resamp_1m.tif"), bed_resamp,force=true)
-write(joinpath(datadir_WWFS_input, "bedrock_gpr_plus_1m.tif"),bedrock_gpr_plus, force=true)
-write(joinpath(datadir_WWFS_input, "bedrock_gpr_minus_1m.tif"), bedrock_gpr_minus, force=true)
+write(joinpath(datadir_WWFS_input, "bedrock_gpr_plus5m_1m.tif"),bedrock_gpr_plus, force=true)
+write(joinpath(datadir_WWFS_input, "bedrock_gpr_minus5m_1m.tif"), bedrock_gpr_minus, force=true)
+write(joinpath(datadir_WWFS_input, "bed_err_plus_gpr5m_1m.tif"), u_plus_gpr, force=true)
+write(joinpath(datadir_WWFS_input, "bed_err_minus_gpr5m_1m.tif"), u_minus_gpr, force=true)
 write(joinpath(datadir_WWFS_input, "surface_2021_cr.tif"), surface_2021_cr,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"), surface_2024_oct_resamp,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_june.tif"), surface_2024_june,force=true)

@@ -7,15 +7,16 @@ using CSV, DataFrames, NearestNeighbors
 """
     clean_raster(r::Raster) -> Raster{Float32}
 
-Replaces `missing` values with `NaN` and ensures the result is a `Float32` raster.
+Convert a Raster{Union{Missing, Float32}} to Raster{Float32}, replacing `missing` with `NaN` 
+and removing internal `missingval` metadata.
 """
 function clean_raster(r::Raster)
-    A = Array(r)
-    cleaned_array = Float32[ismissing(v) ? NaN32 : v for v in A]
-    cleaned_raster = Raster(reshape(cleaned_array, size(A)), dims(r))
-    return cleaned_raster
-end
+    # Replace missing values with NaN32 and ensure Float32 array
+    clean_data = Float32[ismissing(v) ? NaN32 : Float32(v) for v in r]
 
+    # Rebuild raster with same spatial dims, no missingval metadata
+    return Raster(reshape(clean_data, size(r)), dims(r))
+end
 
 
 function load_ice_thickness(filepath::String)

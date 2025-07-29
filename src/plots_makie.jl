@@ -229,7 +229,7 @@ function plot_lake_depth(
     Z_lake[Z_lake .== 0] .= NaN
 
     
-    vmin, vmax = finite_minmax(Z_full)
+    vmin, vmax = finite_minmax(Z_lake)
     vmin = min_depth
 
     fig = Figure(size=(800, 600))
@@ -294,7 +294,7 @@ function plot_lake_depth(
     text!(
         ax, x[1], y[end],
         text = "Total volume: $(total_vol) m³\nLargest water pocket: $(max_vol) m³",
-        halign = :left, valign = :top, fontsize = 10, color = :black
+        align = (:left, :top), fontsize = 10, color = :black
     )
 
     # Generate nice intermediate ticks between vmin and vmax, e.g. 5 ticks total

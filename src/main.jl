@@ -13,6 +13,7 @@ const WWF = WhereTheWaterFlows
 
 include("LakeAnalysis.jl")
 include("plots_makie.jl")
+include("functions.jl")
 using .LakeAnalysis
 
 datadir_WWFS_input = "/scratch-3/cogier/data/BonnePierre_input/WWFS_input"
@@ -53,8 +54,8 @@ for min_depth in min_depths
                 println("\n🔷 Processing run: $(run.name), fill_frac=$(fill_frac)")
 
                 # Load Rasters
-                surface = Raster(run.surface_path)
-                thickness = Raster(run.thickness_path)
+                surface = clean_raster(Raster(run.surface_path))
+                thickness = clean_raster(Raster(run.thickness_path))
                 bedrock = surface - thickness
 
                 # Grid spacing

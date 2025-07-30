@@ -11,6 +11,9 @@ using Statistics
 include("plots_makie.jl")
 include("functions.jl")
 using .UncUtils
+using WhereTheWaterFlowsSubglacially
+const WWFS = WhereTheWaterFlowsSubglacially
+
 
 """
 prepare.jl
@@ -53,11 +56,24 @@ bedrock_gpr_minus = resample(bedrock_gpr_minus_10m; to=bed_resamp, method=:bilin
 # mask
 mask = bed_resamp .> 0
 
-# Compute GPR uncertainty maps 
+### Compute surface uncertainties for October 2024 (due to smoothing)
+#smoothing
+smooth_coeff = 0.1 # as fraction of thickness
+smooth_half_window = smooth_coeff / 2
+x, y = dims(surface_2024_oct_resamp)
+# below y = x is a trick as WWFS.smooth_surface test: @assert dy==dx and here dy = -1 (dx=1)
+surface_2024_oct_smooth = WWFS.smooth_surface(x, x, surface_2024_oct_resamp, bed_resamp, smooth_half_window, mask)
+# Determinstic error field:
+surface_2024_oct_err = surface_2024_oct_resamp .- surface_2024_oct_smooth # surface_2024_oct_resamp is the ground truth
+# one sigma standard deviation:
+surface_2024_oct_std = abs.(surface_2024_oct_err) ./ 1.0  # 68% ≈ ±1σ WARNING: so the sigma variation is not centered around the truth but around the smoothed values...
+# anyway this is opitmistic (i.e. minimal unc) as there is also the role of (unquantified) debris thickness in ice overburden variation
+
+### Compute GPR uncertainty maps 
 u_plus_gpr  = bedrock_gpr_plus .- bed_resamp    # ≥ 0
 u_minus_gpr = bedrock_gpr_minus .- bed_resamp   # ≤ 0
 
-# Compute Glate uncertainty maps
+### Compute Glate uncertainty maps
 
 # Extract glacier outline points directly from the thickness raster
 thickness = ice_thickness_2024_nov_resamp
@@ -154,7 +170,7 @@ plot_uncertainty_bed(u_plus_bed, u_minus_bed,
 write(joinpath(datadir_WWFS_input, "ice_thickness_2021_july.tif"), ice_thickness_2021,force=true)
 write(joinpath(datadir_WWFS_input, "ice_thickness_2024_june.tif"), ice_thickness_2024_june,force=true)
 write(joinpath(datadir_WWFS_input, "ice_thickness_2024_oct.tif"), ice_thickness_2024_oct,force=true)
-write(joinpath(datadir_WWFS_input, "ice_thickness_2024_november_glate.tif"), ice_thickness_2024_nov_resamp,force=true) # same as october??
+write(joinpath(datadir_WWFS_input, "ice_thickness_2024_november_glate.tif"), ice_thickness_2024_nov_resamp,force=true) 
 #bedrock
 write(joinpath(datadir_WWFS_input, "bedrock_resamp_1m.tif"), bed_resamp,force=true)
 write(joinpath(datadir_WWFS_input, "bedrock_gpr_plus5m_1m.tif"),bedrock_gpr_plus, force=true)
@@ -168,3 +184,4 @@ write(joinpath(datadir_WWFS_input, "bedrock_err_std_1m.tif"), bed_err_std, force
 write(joinpath(datadir_WWFS_input, "surface_2021_cr.tif"), surface_2021_cr,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"), surface_2024_oct_resamp,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_june.tif"), surface_2024_june,force=true)
+write(joinpath(datadir_WWFS_input, "surface_2024_oct_err_std_1m.tif"), surface_2024_oct_std, force=true)

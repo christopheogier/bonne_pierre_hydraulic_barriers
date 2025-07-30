@@ -269,7 +269,7 @@ function plot_lake_depth(
         area_int = Int.(area_mask)
         contour!(ax, x, y, area_int;
             levels = [0.5],
-            color = (:darkblue,0.8),
+            color = (:darkblue,0.4),
             linewidth = 1.0
         )
     end
@@ -294,7 +294,7 @@ function plot_lake_depth(
     text!(
         ax, x[1], y[end],
         text = "Total volume: $(total_vol) m³\nLargest water pocket: $(max_vol) m³",
-        align = (:left, :top), fontsize = 10, color = :black
+         fontsize = 10, color = :black
     )
 
     # Generate nice intermediate ticks between vmin and vmax, e.g. 5 ticks total
@@ -402,4 +402,46 @@ function plot_hydraulic_head_and_flux(
     return fig
 end
 
+function boxplot_lake_vol_stoch(
+    aggr_main;
+    aggr2 = nothing,
+    aggr3 = nothing,
+    aggr4 = nothing,
+    savepath::String = "lake_fs_volume_boxplot.png"
+)
+    # Collect lake volume vectors
+    lake_vols = [aggr_main.lake_fs_vol]
+    labels = ["all unc."]
+
+    if aggr2 !== nothing
+        push!(lake_vols, aggr2.lake_fs_vol)
+        push!(labels, "bed. unc.")
+    end
+    if aggr3 !== nothing
+        push!(lake_vols, aggr3.lake_fs_vol)
+        push!(labels, "surf. unc.")
+    end
+    if aggr4 !== nothing
+        push!(lake_vols, aggr4.lake_fs_vol)
+        push!(labels, "flot. unc.")
+    end
+
+    # Set up figure
+    fig = Figure(size = (100 * length(lake_vols) + 300, 400))
+    ax = Axis(fig[1, 1],
+        title = "Total lake (>2m) volume distribution (Monte Carlo)",
+        ylabel = "Volume (m³)",
+        xticks = (1:length(labels), labels)
+    )
+
+    # Prepare x and y data for boxplot
+    x = vcat([fill(i, length(v)) for (i, v) in enumerate(lake_vols)]...)
+    y = vcat(lake_vols...)
+
+    boxplot!(ax, x, y)
+
+    save(savepath, fig)
+    println("✅ Saved stochastic lake volume boxplot to: $savepath")
+    return fig
+end
 

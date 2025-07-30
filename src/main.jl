@@ -41,7 +41,7 @@ runs = [
 # TO CHANGE
 min_depths = 2.#[0.0, 2.0]           # meters
 smooth_coeffs = 0.1#[0.0, 0.1]        # as fraction of thickness
-filling_fractions = 0.# [0.0, 0.75]   # fraction of supraglacial filling
+filling_fractions = 0.#[0.0, 0.75]   # fraction of supraglacial filling
 
 # Summary
 summaries = DataFrame()

@@ -64,10 +64,9 @@ x, y = dims(surface_2024_oct_resamp)
 # below y = x is a trick as WWFS.smooth_surface test: @assert dy==dx and here dy = -1 (dx=1)
 surface_2024_oct_smooth = WWFS.smooth_surface(x, x, surface_2024_oct_resamp, bed_resamp, smooth_half_window, mask)
 # Determinstic error field:
-surface_2024_oct_err = surface_2024_oct_resamp .- surface_2024_oct_smooth # surface_2024_oct_resamp is the ground truth
+surface_2024_oct_resamp_avg = (surface_2024_oct_resamp .+ surface_2024_oct_smooth) ./ 2  # surface_2024_oct_resamp is the ground truth
 # one sigma standard deviation:
-surface_2024_oct_std = abs.(surface_2024_oct_err) ./ 1.0  # 68% ≈ ±1σ WARNING: so the sigma variation is not centered around the truth but around the smoothed values...
-# anyway this is opitmistic (i.e. minimal unc) as there is also the role of (unquantified) debris thickness in ice overburden variation
+surface_2024_oct_std = abs.(surface_2024_oct_resamp_avg .- surface_2024_oct_smooth) ./ 1 # divided by one because hypothesis: err = ±1σ ≈ 68%
 
 ### Compute GPR uncertainty maps 
 u_plus_gpr  = bedrock_gpr_plus .- bed_resamp    # ≥ 0
@@ -184,4 +183,5 @@ write(joinpath(datadir_WWFS_input, "bedrock_err_std_1m.tif"), bed_err_std, force
 write(joinpath(datadir_WWFS_input, "surface_2021_cr.tif"), surface_2021_cr,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"), surface_2024_oct_resamp,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_june.tif"), surface_2024_june,force=true)
-write(joinpath(datadir_WWFS_input, "surface_2024_oct_err_std_1m.tif"), surface_2024_oct_std, force=true)
+write(joinpath(datadir_WWFS_input, "surface_2024_oct_err_std_smooth01.tif"), surface_2024_oct_std, force=true)
+write(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_avg_01smooth.tif"), surface_2024_oct_resamp_avg, force=true)

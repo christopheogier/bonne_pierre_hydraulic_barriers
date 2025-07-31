@@ -23,14 +23,15 @@ output_dir = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
 
 # Load surface and thickness for 2024 October
 name = "2024_October"
-surface = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif")))  # which smoothing should we use ?
+surface = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"))) 
+surface_smooth_avg = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_avg_01smooth.tif"))) # average of resampled and smoothed DEM
 thickness = clean_raster(Raster(joinpath(datadir_WWFS_input, "ice_thickness_2024_oct.tif")))
 bedrock = clean_raster(Raster(joinpath(datadir_WWFS_input,"bedrock_resamp_1m.tif")))
 
 #load uncertainties
 bed_err_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "bedrock_err_std_1m.tif")))
 #surface unc
-surface_2024_oct_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_err_std_1m.tif")))
+surface_2024_oct_smooth_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_err_std_smooth01.tif")))
 
 
 ################################ WWFS stochastic ########################################
@@ -39,9 +40,11 @@ surface_2024_oct_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface
 # --- Define uncertainty models ---
 #kernel = "gauss"
 cov_fn = WWFS.GRF.gaussian_kernel #or WWFS.GRF.exponential_kernel
-range_bed = 2100 #m, see XDEM variograms outputs
-range_surf = 100.0 # ARBITRARY FOR NOW
-corr_length_f = 50 # ARBITRARY FOR NOW
+range_bed = 2900 #m, see XDEM variograms outputs
+range_surf = 2900 #m it seems correlated all over the dem area !
+corr_length_f = 500 # ARBITRARY FOR NOW, otherwise mae a sensitivity analysis
+
+# the longer the correlation length the smaller the spread in the stochastic runs
 
 # correlation lengths
 corr_length_bed = range_bed / sqrt(3)  # m 
@@ -50,20 +53,22 @@ corr_length_bed = range_bed / sqrt(3)  # m
 #This practical range relates to the correlation length as follows:​
 # Gaussian Model: Practical range ≈ sqrt(3) x ℓ​ = 1.73 x l
 # Exponential Model: Practical range ≈ 3 x ℓ​
-corr_length_surf = 50.0 / sqrt(3)      # placeholder for DEM error corr. length
+corr_length_surf = range_surf / sqrt(3)      # placeholder for DEM error corr. length
 
 
 # Input fields (already loaded), but also convert in float for WWFS
-surfdem = surface   
+surfdem = surface_smooth_avg   
 beddem = bedrock
 rmask     = thickness .> 0
 floatfrac = 1 .* ones(size(surfdem))
 source    = ones(size(surfdem)) # what is "source" ?
 
 # Uncertainties
-surfdem_uc   = Uncertainty(absuc=1, reluc=0.0, correlation_length=corr_length_surf, covariance_fn=cov_fn )  
+surfdem_uc   = Uncertainty(absuc=surface_2024_oct_smooth_std, reluc=0.0, correlation_length=corr_length_surf, covariance_fn=cov_fn )  
 beddem_uc    = Uncertainty(absuc=bed_err_std, reluc=0.0, correlation_length=corr_length_bed, covariance_fn=cov_fn)
-floatfrac_uc = Uncertainty(absuc=0.0, reluc=0.05, correlation_length=corr_length_f,covariance_fn=cov_fn) 
+floatfrac_uc = Uncertainty(absuc=0.0, reluc=0.1, correlation_length=corr_length_f,covariance_fn=cov_fn) 
+#  f = 0.6 to 1.11 in Chu et aL 2016 (greenland)
+# f = 0.8 to 1.1 in Bowling et al 2015 (greenland)
 source_uc    = Uncertainty()  
 
 # Loop over 4 uncertainty cases

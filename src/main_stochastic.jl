@@ -42,9 +42,13 @@ surface_2024_oct_smooth_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "
 cov_fn = WWFS.GRF.gaussian_kernel #or WWFS.GRF.exponential_kernel
 range_bed = 2900 #m, see XDEM variograms outputs
 range_surf = 2900 #m it seems correlated all over the dem area !
-corr_length_f = 500 # ARBITRARY FOR NOW, otherwise mae a sensitivity analysis
+corr_length_f = 100 #[10,100,1000] # ARBITRARY FOR NOW, otherwise mae a sensitivity analysis
 
-# the longer the correlation length the smaller the spread in the stochastic runs
+
+
+#A longer spatial correlation length means that the Gaussian Random Field (GRF) has more smoothly varying, spatially coherent patterns. This causes neighboring pixels to vary together — leading to:
+
+#So, in Monte Carlo simulations: The pixel-wise variability decreases, and The realizations look smoother, with fewer high-frequency perturbations
 
 # correlation lengths
 corr_length_bed = range_bed / sqrt(3)  # m 
@@ -53,7 +57,9 @@ corr_length_bed = range_bed / sqrt(3)  # m
 #This practical range relates to the correlation length as follows:​
 # Gaussian Model: Practical range ≈ sqrt(3) x ℓ​ = 1.73 x l
 # Exponential Model: Practical range ≈ 3 x ℓ​
+# Spherical Model> range ≈ 0.66 x l
 corr_length_surf = range_surf / sqrt(3)      # placeholder for DEM error corr. length
+
 
 
 # Input fields (already loaded), but also convert in float for WWFS

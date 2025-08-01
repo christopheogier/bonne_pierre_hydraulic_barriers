@@ -71,6 +71,7 @@ plot_lake_depth(
     area_threshold = 1e4
 )
 
+# plot boxplot with the 4 sub boxplot: all contributions, surf, bed, f
 # Distribution of lake volumes
 boxplot_lake_vol_stoch(aggr1;
     aggr2 = aggr2,
@@ -79,7 +80,19 @@ boxplot_lake_vol_stoch(aggr1;
     savepath = joinpath(output_dir, "lake_volume_comparison.png")
 )
 
+# boxplto with flotation correlation lengths contribution to total lake volume
 
-# plot boxplot with the 4 sub boxplot: all contributions, surf, bed, f
+aggr1 = deserialize(joinpath(output_dir, "aggr_flot_L10.jls"))
+aggr2 = deserialize(joinpath(output_dir, "aggr_flot_L100.jls"))
+aggr3 = deserialize(joinpath(output_dir, "aggr_flot_L1000.jls"))
+
+labels = ["L=10m", "L=100m", "L=1000m"]
+
+boxplot_lake_vol_stoch(aggr1;
+    aggr2 = aggr2,
+    aggr3 = aggr3,
+    labels = labels,
+    savepath = joinpath(output_dir, "boxplot_lake_vol_flotation.png")
+)
 
 

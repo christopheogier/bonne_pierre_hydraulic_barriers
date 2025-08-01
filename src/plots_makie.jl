@@ -407,26 +407,15 @@ function boxplot_lake_vol_stoch(
     aggr2 = nothing,
     aggr3 = nothing,
     aggr4 = nothing,
+    labels::Vector{String} = ["all unc.", "bed. unc.", "surf. unc.", "flot. unc."],
     savepath::String = "lake_fs_volume_boxplot.png"
 )
-    # Collect lake volume vectors
     lake_vols = [aggr_main.lake_fs_vol]
-    labels = ["all unc."]
 
-    if aggr2 !== nothing
-        push!(lake_vols, aggr2.lake_fs_vol)
-        push!(labels, "bed. unc.")
-    end
-    if aggr3 !== nothing
-        push!(lake_vols, aggr3.lake_fs_vol)
-        push!(labels, "surf. unc.")
-    end
-    if aggr4 !== nothing
-        push!(lake_vols, aggr4.lake_fs_vol)
-        push!(labels, "flot. unc.")
-    end
+    if aggr2 !== nothing push!(lake_vols, aggr2.lake_fs_vol) end
+    if aggr3 !== nothing push!(lake_vols, aggr3.lake_fs_vol) end
+    if aggr4 !== nothing push!(lake_vols, aggr4.lake_fs_vol) end
 
-    # Set up figure
     fig = Figure(size = (100 * length(lake_vols) + 300, 400))
     ax = Axis(fig[1, 1],
         title = "Total lake (>2m) volume distribution (Monte Carlo)",
@@ -434,14 +423,11 @@ function boxplot_lake_vol_stoch(
         xticks = (1:length(labels), labels)
     )
 
-    # Prepare x and y data for boxplot
     x = vcat([fill(i, length(v)) for (i, v) in enumerate(lake_vols)]...)
     y = vcat(lake_vols...)
-
     boxplot!(ax, x, y)
 
     save(savepath, fig)
     println("✅ Saved stochastic lake volume boxplot to: $savepath")
     return fig
 end
-

@@ -35,7 +35,7 @@ bedrock = load_bedrock(joinpath(datadir_in, "BED_10m_l93_20smooth.tif"))
 ice_thickness_2024_nov = load_ice_thickness(joinpath(datadir_in, "Hall_10m_l93_GlaTE20.asc"))  # ice thickness from air eth and glate on 6.11.2024
 
 # load bedrock plus and minus from GPR
-bedrock_gpr_plus_10m = load_bedrock(joinpath(datadir_in, "BED_10m_l93_20smooth_+5m.tif")) # error name + instead of - ???
+bedrock_gpr_plus_10m = load_bedrock(joinpath(datadir_in, "BED_10m_l93_20smooth_+5m.tif")) 
 bedrock_gpr_minus_10m = load_bedrock(joinpath(datadir_in, "BED_10m_l93_20smooth_-5m.tif"))
 
 
@@ -64,9 +64,11 @@ x, y = dims(surface_2024_oct_resamp)
 # below y = x is a trick as WWFS.smooth_surface test: @assert dy==dx and here dy = -1 (dx=1)
 surface_2024_oct_smooth = WWFS.smooth_surface(x, x, surface_2024_oct_resamp, bed_resamp, smooth_half_window, mask)
 # Determinstic error field:
-surface_2024_oct_resamp_avg = (surface_2024_oct_resamp .+ surface_2024_oct_smooth) ./ 2  # surface_2024_oct_resamp is the ground truth
 # one sigma standard deviation:
-surface_2024_oct_std = abs.(surface_2024_oct_resamp_avg .- surface_2024_oct_smooth) ./ 1 # divided by one because hypothesis: err = ±1σ ≈ 68%
+surface_2024_oct_std = abs.(surface_2024_oct_resamp .- surface_2024_oct_smooth)
+# if considered the surface in between the two surfaces, then the error is half of the difference
+surface_2024_oct_resamp_avg = (surface_2024_oct_resamp .+ surface_2024_oct_smooth) ./ 2  # surface_2024_oct_resamp is the ground truth
+surface_2024_oct_std_bis = abs.(surface_2024_oct_resamp_avg .- surface_2024_oct_smooth) ./ 1 # divided by one because hypothesis: err = ±1σ ≈ 68%
 
 ### Compute GPR uncertainty maps 
 u_plus_gpr  = bedrock_gpr_plus .- bed_resamp    # ≥ 0
@@ -103,13 +105,12 @@ u_plus_interp[.!mask] .= NaN
 
 #### Total uncertainty bedrock
 
-# Load GPR uncertainty maps
+# Load GPR uncertainty maps = assumed to be symetric from now own, based on the minus (larger and thus mor conservative)
+u_plus_bed = sqrt.(u_plus_gpr.^2 .+ u_plus_interp.^2)
+u_minus_bed = -sqrt.(u_minus_gpr.^2 .+ u_minus_interp.^2)
 
-u_plus_bed = u_plus_gpr .+ u_plus_interp
-u_minus_bed = u_minus_gpr .+ u_minus_interp
-
-# one need to define a symmetric uncertainty for the bedrock (plus minus sigma, the standard deviation)
-bed_err_std = 0.5 .* (u_plus_bed .- u_minus_bed)
+#one need to define a symmetric uncertainty for the bedrock (plus minus sigma, the standard deviation)
+bed_err_std = u_minus_bed
 
 
 # Load GPR points
@@ -159,7 +160,7 @@ plot_uncertainty_bed(u_plus_interp, u_minus_interp,
     "Bedrock: GLATE interpolation uncertainty", "Interpolation +", "Interpolation -",
     joinpath(plots_dir, "glate_interp_uncertainty.png"))
 
-plot_uncertainty_bed(u_plus_bed, u_minus_bed,
+plot_uncertainty_bed(u_plus_bed,u_minus_bed,
     "Cumulative bedrock uncertainty (GPR + GLATE-Interpolation)", "+ sigma", "- sigma",
     joinpath(plots_dir, "bedrock_all_uncertainty.png"))
 
@@ -184,4 +185,6 @@ write(joinpath(datadir_WWFS_input, "surface_2021_cr.tif"), surface_2021_cr,force
 write(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"), surface_2024_oct_resamp,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_june.tif"), surface_2024_june,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_oct_err_std_smooth01.tif"), surface_2024_oct_std, force=true)
+write(joinpath(datadir_WWFS_input, "surface_2024_oct_smooth_01.tif"), surface_2024_oct_smooth, force=true)
+# average of resampled and smoothed DEM
 write(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_avg_01smooth.tif"), surface_2024_oct_resamp_avg, force=true)

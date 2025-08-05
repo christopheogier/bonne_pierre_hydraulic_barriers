@@ -25,11 +25,13 @@ output_dir = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
 name = "2024_October"
 surface = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"))) 
 surface_smooth_avg = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_avg_01smooth.tif"))) # average of resampled and smoothed DEM
+surface_smooth = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_smooth_01.tif"))) # smoothed DEM
 thickness = clean_raster(Raster(joinpath(datadir_WWFS_input, "ice_thickness_2024_oct.tif")))
 bedrock = clean_raster(Raster(joinpath(datadir_WWFS_input,"bedrock_resamp_1m.tif")))
 
 #load uncertainties
 bed_err_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "bedrock_err_std_1m.tif")))
+# import lus and minus sigma if we can force WWF within two assymetric bound?
 #surface unc
 surface_2024_oct_smooth_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_err_std_smooth01.tif")))
 
@@ -63,7 +65,7 @@ corr_length_surf = range_surf / sqrt(3)      # placeholder for DEM error corr. l
 
 
 # Input fields (already loaded), but also convert in float for WWFS
-surfdem = surface_smooth_avg   
+surfdem = surface_smooth
 beddem = bedrock
 rmask     = thickness .> 0
 floatfrac = 1 .* ones(size(surfdem))

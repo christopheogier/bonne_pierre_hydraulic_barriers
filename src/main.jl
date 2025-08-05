@@ -81,7 +81,10 @@ for min_depth in min_depths
                 if fill_frac == 0.0
                     surface_fill = surface
                 else
-                    surface_fill = surface .+ fill_frac * lake_surf
+                    # wait... the following lower the lake surface but does not decrease its extent...
+                    #we should also aply a mask to the lake_surf
+                    # fill so the volume is 100000 m3. or do we have a mask directly?
+                    surface_fill = surface .+ fill_frac * lake_surf #and water to ice density convertion ??
                 end
 
                 # Run WWFS

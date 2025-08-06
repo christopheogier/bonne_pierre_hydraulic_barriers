@@ -145,7 +145,7 @@ ice_thickness_rasters = [
 
 for (raster, name) in ice_thickness_rasters
     savepath = joinpath(plots_dir, name)
-    plot_ice_thickness(raster;gpr_points=gpr_points,savepath=savepath)
+    plot_ice_thickness(raster;gpr_points=nothing,savepath=savepath)
 end
 
 # bedrock

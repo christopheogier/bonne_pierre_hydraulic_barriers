@@ -41,17 +41,18 @@ runs = [
 # TO CHANGE
 min_depths = 2.#[0.0, 2.0]           # meters
 smooth_coeffs = 0.1#[0.0, 0.1]        # as fraction of thickness
-filling_fractions = 0.#[0.0, 0.75]   # fraction of supraglacial filling
+#filling_fractions = 0.#[0.0, 0.75]   # fraction of supraglacial filling
+filling_volume = [0.,100000.0] # m3, volume to fill the largest supraglacial lake
 
 # Summary
 summaries = DataFrame()
 
 for min_depth in min_depths
     for smooth_coeff in smooth_coeffs
-        for fill_frac in filling_fractions
-            for run in runs
+        for fill_vol in filling_volume
+            for run in runs[3:3]
 
-                println("\n🔷 Processing run: $(run.name), fill_frac=$(fill_frac)")
+                println("\n🔷 Processing run: $(run.name), fill_vol=$(fill_vol)")
 
                 # Load Rasters
                 surface = clean_raster(Raster(run.surface_path))
@@ -78,12 +79,22 @@ for min_depth in min_depths
                 (_, _, dir, _, _, sinks, _, _, _) = WWF.waterflows(surface)
                 surf_fill = fill_dem(surface, sinks, dir)
                 lake_surf = surf_fill .- surface
-                if fill_frac == 0.0
+                #analysis
+                analysis_supra = analyze_lakes(lake_surf,thickness)
+                supralake_volume_m3 = analysis_supra.LargestLake.volume
+                #actung the mask returns the label, and not one, so the area is the sum of non 0 entries
+                supralake_area_m2 = count(!iszero, analysis_supra.LargestLake.mask)
+                println("  Largest supraglacial lake volume: ", supralake_volume_m3, " m³") 
+                println("  Largest supraglacial lake area: ", supralake_area_m2, " m²")
+
+                if fill_volc == 0.0
                     surface_fill = surface
                 else
                     # wait... the following lower the lake surface but does not decrease its extent...
                     #we should also aply a mask to the lake_surf
                     # fill so the volume is 100000 m3. or do we have a mask directly?
+
+                    # so we should fill the surface up to suprlake mask from rtm?
                     surface_fill = surface .+ fill_frac * lake_surf #and water to ice density convertion ??
                 end
 

@@ -118,7 +118,7 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
     vmin, vmax = finite_minmax(Z)
 
     fig = Figure(size=(800, 600))
-    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title="Bedrock elevation")
+    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title="Bedrock elevation (m a.s.l.)")
 
     hm = heatmap!(ax, x, y, Z; colormap=:thermal, colorrange=(vmin, vmax))
     # 20m contour lines

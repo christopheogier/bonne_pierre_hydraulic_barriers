@@ -110,7 +110,7 @@ u_plus_bed = sqrt.(u_plus_gpr.^2 .+ u_plus_interp.^2)
 u_minus_bed = -sqrt.(u_minus_gpr.^2 .+ u_minus_interp.^2)
 
 #one need to define a symmetric uncertainty for the bedrock (plus minus sigma, the standard deviation)
-bed_err_std = u_minus_bed
+bed_err_std = abs.(u_minus_bed)
 
 
 # Load GPR points
@@ -180,6 +180,7 @@ write(joinpath(datadir_WWFS_input, "bed_err_minus_gpr5m_1m.tif"), u_minus_gpr, f
 write(joinpath(datadir_WWFS_input, "bedrock_err_plus_1m.tif"), u_plus_bed, force=true)
 write(joinpath(datadir_WWFS_input, "bedrock_err_minus_1m.tif"), u_minus_bed, force=true)
 write(joinpath(datadir_WWFS_input, "bedrock_err_std_1m.tif"), bed_err_std, force=true)
+write(joinpath(datadir_WWFS_input, "bedrock_err_interp_plus_1m.tif"),u_plus_interp , force=true)
 #surface
 write(joinpath(datadir_WWFS_input, "surface_2021_cr.tif"), surface_2021_cr,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"), surface_2024_oct_resamp,force=true)

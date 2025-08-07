@@ -50,7 +50,7 @@ summaries = DataFrame()
 for min_depth in min_depths
     for smooth_coeff in smooth_coeffs
         for fill_vol in filling_volume
-            for run in runs[3:3]
+            for run in runs[2:2]
 
                 println("\n🔷 Processing run: $(run.name), fill_vol=$(fill_vol)")
 
@@ -94,13 +94,13 @@ for min_depth in min_depths
                     while supralake_volume_m3 > fill_vol
                         println("  Largest supraglacial lake volume: ", supralake_volume_m3, " m³") 
                         println("  Largest supraglacial lake area: ", supralake_area_m2, " m²")
-                        lake_surf .-= 0.5   # lower by 10 cm
+                        lake_surf .-= 0.1   # lower by 10 cm
                         lake_surf = max.(lake_surf, 0.0)  # avoid negative values
                         # or should we control the lake area instead?
                         analysis_supra = analyze_lakes(lake_surf, thickness)
                         supralake_volume_m3 = analysis_supra.LargestLake.volume
                         supralake_mask = analysis_supra.LargestLake.mask
-                        c = c + 0.5
+                        c = c + 0.1
                     end
                     println("lake lowering =", c ," m" )
                     supralake_area_m2 = sum(supralake_mask)

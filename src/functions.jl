@@ -156,6 +156,12 @@ end
 function unc_propagate(dist_raster::Raster, h_mean::Real) # so that float or integer works
     u_minus  = (-0.27 .- 0.00077 .* dist_raster) .* h_mean
     u_plus = (0.08  .+ 0.00083 .* dist_raster) .* h_mean  # note this is inverted from Grabe et al because here u is for the bedrock, not the ice thickness
+    # set u = 0 if d = 0 (a case not accounted above. Seems like that is what Grab et al did but it was not epxlicit in the paper)
+   
+    mask_zero = dist_raster .== 0
+    u_minus[mask_zero] .= 0.0  # Set u = 0 where distance is zero
+    u_plus[mask_zero]  .= 0.0 
+    
     return u_minus, u_plus
 end
 

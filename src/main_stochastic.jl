@@ -23,6 +23,7 @@ output_dir = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
 
 # Load surface and thickness for 2024 October
 name = "2024_October"
+# run case for June 2024 too, using surface_filled with 100000m3 lake
 surface = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"))) 
 surface_smooth_avg = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_avg_01smooth.tif"))) # average of resampled and smoothed DEM
 surface_smooth = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_smooth_01.tif"))) # smoothed DEM
@@ -42,8 +43,8 @@ surface_2024_oct_smooth_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "
 # --- Define uncertainty models ---
 #kernel = "gauss"
 cov_fn = WWFS.GRF.gaussian_kernel #or WWFS.GRF.exponential_kernel
-range_bed = 2900 #m, see XDEM variograms outputs
-range_surf = 2900 #m it seems correlated all over the dem area !
+range_bed = 200 #m, see XDEM variograms outputs
+range_surf = 500 #m it seems correlated all over the dem area !
 corr_length_f = 100 #[10,100,1000] # ARBITRARY FOR NOW, otherwise mae a sensitivity analysis
 
 

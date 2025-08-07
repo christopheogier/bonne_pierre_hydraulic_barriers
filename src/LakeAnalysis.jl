@@ -7,6 +7,7 @@ export LakeAnalysisResult, LargestLake, analyze_lakes, boxplot_lakes
 # Struct to hold data about the largest lake
 struct LargestLake
     volume::Float64
+    area::Float64
     mask::BitMatrix
 end
 
@@ -34,7 +35,7 @@ function analyze_lakes(
     measurements = analyze_components(labeled_image, BasicMeasurement())
 
     lake_volumes, lake_areas_m2 = Float64[], Float64[]
-    max_volume, max_label = -Inf, -1
+    max_volume, max_area, max_label = -Inf, -Inf, -1
 
     lakes_array = collect(lakes)  # avoid repeated conversion
     lake_masks = Dict{Int, BitMatrix}()
@@ -50,15 +51,15 @@ function analyze_lakes(
 
         if volume > max_volume
             max_volume = volume
+            max_area = area  # area coressponds to max volume, can be different than real max area (but unlikely)
             max_label = label
         end
     end
 
-
     measurements.volume = lake_volumes
     measurements.area_m2 = lake_areas_m2
 
-    largest = LargestLake(max_volume, labeled_image .== max_label)
+    largest = LargestLake(max_volume, max_area, labeled_image .== max_label)
 
     return LakeAnalysisResult(labeled_image, measurements, min_depth, largest, lake_masks)
 

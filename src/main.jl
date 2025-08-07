@@ -75,27 +75,45 @@ for min_depth in min_depths
                     println("  No smoothing applied.")
                 end
 
-                # Supraglacial lake filling
-                (_, _, dir, _, _, sinks, _, _, _) = WWF.waterflows(surface)
-                surf_fill = fill_dem(surface, sinks, dir)
-                lake_surf = surf_fill .- surface
-                #analysis
-                analysis_supra = analyze_lakes(lake_surf,thickness)
-                supralake_volume_m3 = analysis_supra.LargestLake.volume
-                #actung the mask returns the label, and not one, so the area is the sum of non 0 entries
-                supralake_area_m2 = count(!iszero, analysis_supra.LargestLake.mask)
-                println("  Largest supraglacial lake volume: ", supralake_volume_m3, " m³") 
-                println("  Largest supraglacial lake area: ", supralake_area_m2, " m²")
+                surface_fill = copy(surface)  # start with a full copy
+                
+                if fill_vol > 0
+                    # Supraglacial lake filling
+                    (_, _, dir, _, _, sinks, _, _, _) = WWF.waterflows(surface)
+                    surf_fill = fill_dem(surface, sinks, dir)
+                    lake_surf = surf_fill .- surface
 
-                if fill_volc == 0.0
-                    surface_fill = surface
-                else
-                    # wait... the following lower the lake surface but does not decrease its extent...
-                    #we should also aply a mask to the lake_surf
-                    # fill so the volume is 100000 m3. or do we have a mask directly?
+                    # Analyze initial lake
+                    analysis_supra = analyze_lakes(lake_surf, thickness)
+                    supralake_volume_m3 = analysis_supra.LargestLake.volume
+                    supralake_area_m2 = analysis_supra.LargestLake.area
+                    supralake_mask = analysis_supra.LargestLake.mask
 
-                    # so we should fill the surface up to suprlake mask from rtm?
-                    surface_fill = surface .+ fill_frac * lake_surf #and water to ice density convertion ??
+                    # Adjust lake surface until target volume is reached
+                    c = 0
+                    while supralake_volume_m3 > fill_vol
+                        println("  Largest supraglacial lake volume: ", supralake_volume_m3, " m³") 
+                        println("  Largest supraglacial lake area: ", supralake_area_m2, " m²")
+                        lake_surf .-= 0.5   # lower by 10 cm
+                        lake_surf = max.(lake_surf, 0.0)  # avoid negative values
+                        # or should we control the lake area instead?
+                        analysis_supra = analyze_lakes(lake_surf, thickness)
+                        supralake_volume_m3 = analysis_supra.LargestLake.volume
+                        supralake_mask = analysis_supra.LargestLake.mask
+                        c = c + 0.5
+                    end
+                    println("lake lowering =", c ," m" )
+                    supralake_area_m2 = sum(supralake_mask)
+                    println("  Largest new supraglacial lake volume: ", supralake_volume_m3, " m³") 
+                    println("  Largest new supraglacial lake area: ", supralake_area_m2, " m²")
+
+                    # Initialize surface_fill first
+                    surface_fill = copy(surface)
+
+                    # convert mask in bollean
+
+                    # Update only lake pixels with hydro-converted water height
+                    surface_fill[supralake_mask] .= surface[supralake_mask] .+ lake_surf[supralake_mask] ./ 0.9
                 end
 
                 # Run WWFS
@@ -110,12 +128,16 @@ for min_depth in min_depths
                 )
 
                 # Output naming
-                fill_id = "_fill$(replace(string(Int(round(fill_frac * 100))), "." => ""))"
+                fill_id = "_fill$(string(round(fill_vol)))"
                 run_id = run.name * "_md$(Int(min_depth))_sm$(replace(string(smooth_coeff), "." => ""))" * fill_id
                 out_prefix = joinpath(output_dir, run_id)
 
 
                 # Save outputs
+                if fill_vol > 0 # otherwise lake_surf not defined
+                    supra_lake = surface_fill .- surface
+                    write(joinpath(output_dir, run_id * "_filledsupralake.tif"), supra_lake; force=true)
+                end
                 #write(out_prefix * "_lakes_free.tif", lakes_free_surf; force=true)
                 #write(out_prefix * "_phi.tif", phi; force=true)
                 #write(out_prefix * "_area.tif", areas[1]; force=true)
@@ -129,7 +151,7 @@ for min_depth in min_depths
                     run = run.name,
                     smooth_surface_ice_fraction = smooth_coeff,
                     min_depth_m = analysis.min_depth,
-                    supragl_fill_fraction = fill_frac,
+                    supragl_fill_volume_m3 = fill_vol,
                     n_lakes = nrow(analysis.stats),
                     total_volume_m3 = sum(analysis.stats.volume),
                     mean_area_m2 = mean(analysis.stats.area_m2),

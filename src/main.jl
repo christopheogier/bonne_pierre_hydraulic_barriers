@@ -55,12 +55,12 @@ for min_depth in min_depths
                 println("\n🔷 Processing run: $(run.name), fill_vol=$(fill_vol)")
 
                 # Load Rasters
-                surface = clean_raster(Raster(run.surface_path))
+                surface_raw = clean_raster(Raster(run.surface_path))
                 thickness = clean_raster(Raster(run.thickness_path))
-                bedrock = surface - thickness
+                bedrock = surface_raw - thickness
 
                 # Grid spacing
-                x, y = dims(surface)
+                x, y = dims(surface_raw)
                 dx = step(x)
                 println("  Grid spacing dx = ", dx, " m")
 
@@ -70,9 +70,10 @@ for min_depth in min_depths
                     mask = bedrock .> 0
                     smooth_half_window = smooth_coeff / 2
                     y = x # WWFS expects square grid
-                    surface = WWFS.smooth_surface(x, y, surface, bedrock, smooth_half_window, mask)
+                    surface = WWFS.smooth_surface(x, y, surface_raw, bedrock, smooth_half_window, mask)
                 else
                     println("  No smoothing applied.")
+                    surface = surface_raw
                 end
 
                 surface_fill = copy(surface)  # start with a full copy
@@ -136,8 +137,20 @@ for min_depth in min_depths
                 # Save outputs
                 if fill_vol > 0 # otherwise lake_surf not defined
                     supra_lake = surface_fill .- surface
-                    write(joinpath(output_dir, run_id * "_filledsupralake.tif"), supra_lake; force=true)
+                    #write(joinpath(output_dir, run_id * "_filledsupralake.tif"), supra_lake; force=true)
                 end
+
+                # plot supra-subglacial WP profiles in surface, smooth surf, phi, and lake_fs.
+                plot_profiles(
+                    bedrock,
+                    surface_raw,
+                    phi,
+                    lakes_free_surf,
+                    joinpath(output_dir, run_id, "_profile_main_WP.png");
+                    surface_smooth = surface,
+                    surface_fill   = surface_fill,
+                )
+
                 #write(out_prefix * "_lakes_free.tif", lakes_free_surf; force=true)
                 #write(out_prefix * "_phi.tif", phi; force=true)
                 #write(out_prefix * "_area.tif", areas[1]; force=true)
@@ -173,6 +186,8 @@ for min_depth in min_depths
                                 
                 # Append to summary
                 append!(summaries, df)
+
+             
 
                 println("  ✅ Done with run: ", run.name)
             end

@@ -431,3 +431,69 @@ function boxplot_lake_vol_stoch(
     println("✅ Saved stochastic lake volume boxplot to: $savepath")
     return fig
 end
+
+"""
+plot_profiles(bedrock, surface_raw, phi, lakes_free_surf, fname;
+              surface_smooth=nothing, surface_fill=nothing)
+
+Plots 1D profiles along the fixed transect:
+ A = (962611.20, 6431486.12)  (upstream, right on map)
+ B = (962397.32, 6431558.42)  (downstream, left on map)
+
+Saves figure to `fname`.
+"""
+function plot_profiles(bedrock::Raster, surface_raw::Raster, phi::Raster, lakes_free_surf::Raster, fname::AbstractString;
+                       surface_smooth::Union{Raster,Nothing}=nothing,
+                       surface_fill::Union{Raster,Nothing}=nothing)
+
+    A = (962611.20, 6431486.12) # picked manually to fit the uper head and the seal (more or less)
+    B = (962397.32, 6431558.42)
+    dx = 1 # sampling
+    x1, y1 = A
+    x2, y2 = B
+    L = hypot(x2 - x1, y2 - y1)
+    n = max(1, floor(Int, L/dx)) + 1
+    ts = range(0.0, 1.0; length=n)
+    pts = [(x1 + t*(x2 - x1), y1 + t*(y2 - y1)) for t in ts]
+    dist = collect(range(0.0, L; length=n))
+
+    # Extract profiles
+    z_bed   = extract(bedrock, pts)
+    z_surf  = extract(surface_raw, pts)
+    z_phi   = extract(phi, pts)
+    h_lake  = extract(lakes_free_surf, pts)  
+
+    z_smooth = isnothing(surface_smooth) ? nothing : extract(surface_smooth, pts)
+    z_fill   = isnothing(surface_fill)   ? nothing : extract(surface_fill, pts)
+
+    # Figure
+    fig = Figure(size=(800, 600))
+    ax  = Axis(fig[1,1], xlabel="Distance along transect (m)", ylabel="Elevation (m)",
+               title="Profiles along A→B")
+
+    # Plot main profiles
+    lines!(dist, z_surf,  label="surface (raw)")
+    if z_smooth !== nothing
+        lines!(ax, dist, z_smooth, label="surface (smoothed)", linestyle=:dash)
+    end
+    
+    if z_fill !== nothing
+        lines!(ax, dist, z_fill,   label="surface (filled)", linestyle=:dot)
+    end
+    lines!(ax, dist, z_bed,   label="bedrock")
+    lines!(ax, dist, z_phi,   label="hydraulic head φ")
+
+    # Lake free-surface depth: plot as bed = depth
+    lines!(ax, dist, z_bed + h_lake,  label="lake_free_surface (depth)")
+
+    axislegend(ax, position=:rb, framevisible=false)
+
+    # Mark A (dist=0) and B (dist=end) for orientation
+    vlines!(ax, [0, dist[end]]; color=:gray, linestyle=:dash, linewidth=1)
+    text!(ax, 5, 0, text="A (upstream)", align=(:left, :bottom), space=:data)
+    text!(ax, dist[end]-5, 0, text="B (downstream)", align=(:right, :bottom), space=:data)
+
+    save(fname, fig; px_per_unit=3)
+    println("✅ saved transect profile to: $fname")
+    return fig
+end

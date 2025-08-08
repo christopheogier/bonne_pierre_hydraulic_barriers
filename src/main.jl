@@ -20,6 +20,8 @@ datadir_WWFS_input = "/scratch-3/cogier/data/BonnePierre_input/WWFS_input"
 output_dir = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
 mkpath(output_dir)
 
+bedrock_resamp = Raster(joinpath(datadir_WWFS_input, "bedrock_resamp_1m.tif"));
+
 runs = [
     (
         name = "2021_July",
@@ -57,7 +59,23 @@ for min_depth in min_depths
                 # Load Rasters
                 surface_raw = clean_raster(Raster(run.surface_path))
                 thickness = clean_raster(Raster(run.thickness_path))
-                bedrock = surface_raw - thickness
+
+                # bercok mosaic
+                # Assume surface, bedrock, thickness are aligned Rasters on the same grid/CRS.
+                mask = thickness .> 0                       # Bool mask (ice where true)
+
+                # Build complementary rasters: bedrock on glacier, surface off-glacier
+                bedrock_on_glacier = ifelse.(mask, bedrock_resamp, missing)
+                surface_off_glacier = ifelse.(mask, missing, surface)
+
+                # Mosaic: where both overlap, the first wins — but they are complementary anyway
+                bedrock = mosaic(first, (bedrock_on_glacier, surface_off_glacier))
+                # write bedrock to check
+
+                #bedrock = surface_raw - thickness  # bedrock is kinda wrong here and not smooth as it should be
+                # we should maybe mosaic bed and surface once for all...
+
+                # load bedrock here (resample). And create bedrock from mosaic
 
                 # Grid spacing
                 x, y = dims(surface_raw)
@@ -67,7 +85,7 @@ for min_depth in min_depths
                 # Smoothing surface
                 if smooth_coeff > 0
                     println("  Smoothing surface with coefficient: ", smooth_coeff)
-                    mask = bedrock .> 0
+                    mask = thickness .> 0
                     smooth_half_window = smooth_coeff / 2
                     y = x # WWFS expects square grid
                     surface = WWFS.smooth_surface(x, y, surface_raw, bedrock, smooth_half_window, mask)
@@ -76,7 +94,6 @@ for min_depth in min_depths
                     surface = surface_raw
                 end
 
-                surface_fill = copy(surface)  # start with a full copy
                 
                 if fill_vol > 0
                     # Supraglacial lake filling
@@ -113,9 +130,15 @@ for min_depth in min_depths
 
                     # convert mask in bollean
 
-                    # Update only lake pixels with hydro-converted water height
+                    # Update only lake pixels with water to ice-converted water height
                     surface_fill[supralake_mask] .= surface[supralake_mask] .+ lake_surf[supralake_mask] ./ 0.9
+                    # that makes the surafce not flat anymore but that is fine, since we are in ice equivalent 
+                else
+                    surface_fill = surface
+
                 end
+
+                # important= fix bedrock smoothness
 
                 # Run WWFS
                 ((areas, slen, dir, nout, nin, sinks, pits, c, bnds),
@@ -146,14 +169,14 @@ for min_depth in min_depths
                     surface_raw,
                     phi,
                     lakes_free_surf,
-                    joinpath(output_dir, run_id, "_profile_main_WP.png");
+                    joinpath(output_dir, run_id * "_profile_main_WP.png");
                     surface_smooth = surface,
                     surface_fill   = surface_fill,
                 )
 
-                #write(out_prefix * "_lakes_free.tif", lakes_free_surf; force=true)
-                #write(out_prefix * "_phi.tif", phi; force=true)
-                #write(out_prefix * "_area.tif", areas[1]; force=true)
+                write(out_prefix * "_lakes_free.tif", lakes_free_surf; force=true)
+                write(out_prefix * "_phi.tif", phi; force=true)
+                write(out_prefix * "_area.tif", areas[1]; force=true)
                 #println("  ➤ Saved 'lakes_free_surf' and 'phi' rasters.")
 
                 # Analyze lakes

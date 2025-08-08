@@ -68,7 +68,7 @@ The bed raster is resampled to match the surface raster grid using bilinear inte
 # Returns
 - `Raster`: Ice thickness raster aligned with `surface`.
 """
-function compute_ice_thickness(surface::Raster, bed::Raster)
+function compute_ice_thickness(surface::Raster, bed_resamp::Raster)
     bed_resamp = resample(bed; to=surface, method=:bilinear)
 
     # Compute thickness: surface - bed

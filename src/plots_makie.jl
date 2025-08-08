@@ -432,6 +432,15 @@ function boxplot_lake_vol_stoch(
     return fig
 end
 
+# Helper: turn extract(...) output into (distance, values) vectors
+_profile_vals(r::Raster, pts) = begin
+    rows = extract(r, pts; geometry=false, skipmissing=false)
+    vraw = getproperty.(rows, name(r))              # Vector{Union{Missing, T}}
+    vals = Float64.(coalesce.(vraw, NaN))           # keep length, convert missings to NaN
+    return vals
+end
+
+
 """
 plot_profiles(bedrock, surface_raw, phi, lakes_free_surf, fname;
               surface_smooth=nothing, surface_fill=nothing)
@@ -446,25 +455,41 @@ function plot_profiles(bedrock::Raster, surface_raw::Raster, phi::Raster, lakes_
                        surface_smooth::Union{Raster,Nothing}=nothing,
                        surface_fill::Union{Raster,Nothing}=nothing)
 
-    A = (962611.20, 6431486.12) # picked manually to fit the uper head and the seal (more or less)
-    B = (962397.32, 6431558.42)
+    A = (962632.47,6431521.78) # upstream # picked manually to fit the uper head and the seal (more or less)
+    B = (962420.11,6431549.94) # dowstream (stream exit in june 2024)
     dx = 1 # sampling
-    x1, y1 = A
-    x2, y2 = B
+    x1, y1 = B
+    x2, y2 = A
     L = hypot(x2 - x1, y2 - y1)
     n = max(1, floor(Int, L/dx)) + 1
     ts = range(0.0, 1.0; length=n)
     pts = [(x1 + t*(x2 - x1), y1 + t*(y2 - y1)) for t in ts]
     dist = collect(range(0.0, L; length=n))
 
-    # Extract profiles
-    z_bed   = extract(bedrock, pts)
-    z_surf  = extract(surface_raw, pts)
-    z_phi   = extract(phi, pts)
-    h_lake  = extract(lakes_free_surf, pts)  
+    # Use the helper for each raster
+    z_bed   = _profile_vals(bedrock,         pts)
+    z_surf  = _profile_vals(surface_raw,     pts)
+    z_phi   = _profile_vals(phi,             pts)
+    h_lake  = _profile_vals(lakes_free_surf, pts)
+    z_smooth = isnothing(surface_smooth) ? nothing : _profile_vals(surface_smooth, pts)
+    z_fill   = isnothing(surface_fill)   ? nothing : _profile_vals(surface_fill,   pts)
 
-    z_smooth = isnothing(surface_smooth) ? nothing : extract(surface_smooth, pts)
-    z_fill   = isnothing(surface_fill)   ? nothing : extract(surface_fill, pts)
+
+    d_smooth, z_smooth = nothing, nothing
+    if surface_smooth !== nothing
+        z_smooth = _profile_vals(surface_smooth, pts)
+    end
+    d_fill, z_fill = nothing, nothing
+    if surface_fill !== nothing
+        z_fill = _profile_vals(surface_fill, pts)
+    end
+
+    # --- Bedrock uncertainty shading ---
+    err_minus_r = Raster("/scratch-3/cogier/data/BonnePierre_input/WWFS_input/bedrock_err_minus_1m.tif")
+    err_plus_r  = Raster("/scratch-3/cogier/data/BonnePierre_input/WWFS_input/bedrock_err_plus_1m.tif")
+
+    z_bed_minus = z_bed + _profile_vals(err_minus_r, pts)
+    z_bed_plus  = z_bed + _profile_vals(err_plus_r,  pts)
 
     # Figure
     fig = Figure(size=(800, 600))
@@ -472,15 +497,22 @@ function plot_profiles(bedrock::Raster, surface_raw::Raster, phi::Raster, lakes_
                title="Profiles along A→B")
 
     # Plot main profiles
-    lines!(dist, z_surf,  label="surface (raw)")
+    lines!(ax, dist, z_surf,  label="surface (LiDAR)")
     if z_smooth !== nothing
         lines!(ax, dist, z_smooth, label="surface (smoothed)", linestyle=:dash)
     end
     
     if z_fill !== nothing
-        lines!(ax, dist, z_fill,   label="surface (filled)", linestyle=:dot)
+        lines!(ax, dist, z_fill,   label="supraglacial lake surface (ice equivalent)", linestyle=:dot)
     end
-    lines!(ax, dist, z_bed,   label="bedrock")
+    lines!(ax, dist, z_bed,   label="bedrock (+/- sigma)")
+
+    # Shaded uncertainty band
+    poly!(ax,
+          vcat(dist, reverse(dist)),
+          vcat(z_bed_minus, reverse(z_bed_plus)),
+          color=(:gray, 0.3), strokewidth=0)
+
     lines!(ax, dist, z_phi,   label="hydraulic head φ")
 
     # Lake free-surface depth: plot as bed = depth
@@ -488,10 +520,15 @@ function plot_profiles(bedrock::Raster, surface_raw::Raster, phi::Raster, lakes_
 
     axislegend(ax, position=:rb, framevisible=false)
 
-    # Mark A (dist=0) and B (dist=end) for orientation
+    # Force y-axis limits
+    y_min = minimum(z_bed)  - 15 # m
+    y_max = maximum(z_surf) + 5  # m
+    ylims!(ax, y_min, y_max)
+
     vlines!(ax, [0, dist[end]]; color=:gray, linestyle=:dash, linewidth=1)
-    text!(ax, 5, 0, text="A (upstream)", align=(:left, :bottom), space=:data)
-    text!(ax, dist[end]-5, 0, text="B (downstream)", align=(:right, :bottom), space=:data)
+    # DOUBLE CHECK A AND B 
+    text!(ax, dist[end]-5, 0, text="A (upstream)", align=(:right, :bottom), space=:data)
+    text!(ax, 5, 0, text="B (downstream)", align=(:right, :bottom), space=:data)
 
     save(fname, fig; px_per_unit=3)
     println("✅ saved transect profile to: $fname")

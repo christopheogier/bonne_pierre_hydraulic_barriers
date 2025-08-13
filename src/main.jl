@@ -57,19 +57,19 @@ for min_depth in min_depths
                 println("\n🔷 Processing run: $(run.name), fill_vol=$(fill_vol)")
 
                 # Load Rasters
-                surface_raw = clean_raster(Raster(run.surface_path))
-                thickness = clean_raster(Raster(run.thickness_path))
+                surface_raw = clean_raster(Raster(run.surface_path));
+                thickness = clean_raster(Raster(run.thickness_path));
 
                 # bercok mosaic
                 # Assume surface, bedrock, thickness are aligned Rasters on the same grid/CRS.
                 mask = thickness .> 0                       # Bool mask (ice where true)
 
                 # Build complementary rasters: bedrock on glacier, surface off-glacier
-                bedrock_on_glacier = ifelse.(mask, bedrock_resamp, missing)
-                surface_off_glacier = ifelse.(mask, missing, surface)
+                bedrock_on_glacier = ifelse.(mask, bedrock_resamp, missing);
+                surface_off_glacier = ifelse.(mask, missing, surface);
 
                 # Mosaic: where both overlap, the first wins — but they are complementary anyway
-                bedrock = mosaic(first, (bedrock_on_glacier, surface_off_glacier))
+                bedrock = mosaic(first, (bedrock_on_glacier, surface_off_glacier));
                 # write bedrock to check
 
                 #bedrock = surface_raw - thickness  # bedrock is kinda wrong here and not smooth as it should be

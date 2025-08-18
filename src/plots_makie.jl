@@ -457,7 +457,7 @@ function plot_profiles(bedrock::Raster, surface_raw::Raster, phi::Raster, lakes_
 
     A = (962632.47,6431521.78) # upstream # picked manually to fit the uper head and the seal (more or less)
     B = (962420.11,6431549.94) # dowstream (stream exit in june 2024)
-    dx = 1 # sampling
+    dx = 2.0 # sampling, larger values smooth the lines
     x1, y1 = B
     x2, y2 = A
     L = hypot(x2 - x1, y2 - y1)

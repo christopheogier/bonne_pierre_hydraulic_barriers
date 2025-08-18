@@ -68,8 +68,8 @@ The bed raster is resampled to match the surface raster grid using bilinear inte
 # Returns
 - `Raster`: Ice thickness raster aligned with `surface`.
 """
-function compute_ice_thickness(surface::Raster, bed_resamp::Raster)
-    bed_resamp = resample(bed; to=surface, method=:bilinear)
+function compute_ice_thickness(surface::Raster, bed::Raster, method_inter::Union{Symbol,String})
+    bed_resamp = resample(bed; to=surface, method=method_inter)
 
     # Compute thickness: surface - bed
     thickness_array = map((s, b) -> begin
@@ -77,7 +77,7 @@ function compute_ice_thickness(surface::Raster, bed_resamp::Raster)
             NaN
         else
             val = s - b
-            val < 0 ? 0.0 : val
+            val < 0 ? 0.0 : val  # negative value (bed above surface) are clipped to 0
         end
     end, surface, bed_resamp)
 

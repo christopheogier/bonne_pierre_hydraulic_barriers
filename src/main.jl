@@ -20,7 +20,7 @@ datadir_WWFS_input = "/scratch-3/cogier/data/BonnePierre_input/WWFS_input"
 output_dir = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
 mkpath(output_dir)
 
-bedrock_resamp = Raster(joinpath(datadir_WWFS_input, "bedrock_resamp_1m.tif"));
+
 
 runs = [
     (
@@ -59,23 +59,22 @@ for min_depth in min_depths
                 # Load Rasters
                 surface_raw = clean_raster(Raster(run.surface_path));
                 thickness = clean_raster(Raster(run.thickness_path));
+                bed = surface_raw .- thickness
+                # for "raw bedrock"
+                bedrock_resamp = Raster(joinpath(datadir_WWFS_input, "bedrock_resamp_1m.tif"));
 
                 # bercok mosaic
                 # Assume surface, bedrock, thickness are aligned Rasters on the same grid/CRS.
                 mask = thickness .> 0                       # Bool mask (ice where true)
+                bedrock_on_glacier = ifelse.(mask, bed, missing);
+                surface_off_glacier = ifelse.(mask, missing, surface_raw);
 
-                # Build complementary rasters: bedrock on glacier, surface off-glacier
-                bedrock_on_glacier = ifelse.(mask, bedrock_resamp, missing);
-                surface_off_glacier = ifelse.(mask, missing, surface);
-
+                # substraction
+             
                 # Mosaic: where both overlap, the first wins — but they are complementary anyway
+             
                 bedrock = mosaic(first, (bedrock_on_glacier, surface_off_glacier));
                 # write bedrock to check
-
-                #bedrock = surface_raw - thickness  # bedrock is kinda wrong here and not smooth as it should be
-                # we should maybe mosaic bed and surface once for all...
-
-                # load bedrock here (resample). And create bedrock from mosaic
 
                 # Grid spacing
                 x, y = dims(surface_raw)

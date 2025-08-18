@@ -45,13 +45,21 @@ surface_2024_june = load_surface(joinpath(datadir_in, "Lidar_juin2024_Bonne_Pier
 surface_2024_oct = load_surface(joinpath(datadir_in, "Lidar_oct2024_Bonne_Pierre_glacier.tif"), bedrock) # 50cm
 
 # Resample October DEM to 2021 DEM resolution: from 50cm to 1m
-surface_2024_oct_resamp = resample(surface_2024_oct; to=surface_2021_cr, method=:bilinear)
+method_inter =:cubic #Bilinear, near (weird) or cubic 
+surface_2024_oct_resamp = resample(surface_2024_oct; to=surface_2021_cr, method=method_inter)
 
 # Resample bedrock and ice thickness to surface 2021 resolution
-bed_resamp = resample(bedrock; to=surface_2021_cr, method=:bilinear)
-ice_thickness_2024_nov_resamp = resample(ice_thickness_2024_nov; to=surface_2021_cr, method=:bilinear)
-bedrock_gpr_plus = resample(bedrock_gpr_plus_10m; to=bed_resamp, method=:bilinear)
-bedrock_gpr_minus = resample(bedrock_gpr_minus_10m; to=bed_resamp, method=:bilinear)
+bed_resamp = resample(bedrock; to=surface_2021_cr, method=method_inter)
+# smooth the resample bedrock as the interopolation makes noise at the meters scale
+#x, y = dims(bed_resamp)
+#dx = x[2] - x[1]                  # grid spacing (m)
+#pixrad = max(1, round(Int, 10.0/dx))  # 10 m moving window for smoothing. 
+#Wconst = fill(pixrad, size(bed_resamp))
+#bed_resamp = WWFS.boxcar(bed_resamp, Wconst, trues(size(bed_resamp)))  # no mask, WARNING THAT ENLARGE the bedrock outline, need to mask
+
+ice_thickness_2024_nov_resamp = resample(ice_thickness_2024_nov; to=surface_2021_cr, method=method_inter)
+bedrock_gpr_plus = resample(bedrock_gpr_plus_10m; to=bed_resamp, method=method_inter)
+bedrock_gpr_minus = resample(bedrock_gpr_minus_10m; to=bed_resamp, method=method_inter)
 
 # mask
 mask = bed_resamp .> 0
@@ -128,9 +136,9 @@ gpr_points = gpr_points[mask, :]
 
 
 # Compute ice thickness for 2021, June 2024, and October 2024
-ice_thickness_2021 = compute_ice_thickness(surface_2021_cr, bedrock)
-ice_thickness_2024_june = compute_ice_thickness(surface_2024_june, bedrock)
-ice_thickness_2024_oct = compute_ice_thickness(surface_2024_oct_resamp, bedrock)
+ice_thickness_2021 = compute_ice_thickness(surface_2021_cr, bedrock,method_inter)
+ice_thickness_2024_june = compute_ice_thickness(surface_2024_june, bedrock,method_inter)
+ice_thickness_2024_oct = compute_ice_thickness(surface_2024_oct_resamp, bedrock,method_inter)
 
 
 # plotting

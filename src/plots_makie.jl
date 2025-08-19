@@ -384,7 +384,7 @@ function plot_hydraulic_head_and_flux(
     lines!(ax, [NaN], [NaN];
         color = :red,
         linewidth = 1.5,
-        label = "Upslope area > $(Int(max_threshold)) m²"
+        label = "Upslope area > $(Int(min_threshold)) m²"
     )
 
     # Add legend in top-left of axis

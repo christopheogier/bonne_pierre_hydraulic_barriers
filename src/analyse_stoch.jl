@@ -58,7 +58,7 @@ df = DataFrame(
 CSV.write(joinpath(output_dir, "WWFS_stoch_lake_summary.csv"), df)
 
 # --- Plot ---
-# mean lake depth and mean area
+# mean lake depth and mean area. Put optional surface depression as outline (need to open the file beforehand)
 plot_lake_depth(
     lake_depth_mean,
     thickness,
@@ -68,7 +68,8 @@ plot_lake_depth(
     min_depth = analysis.min_depth,
     show_all_lakes = true,
     area = area_stoch,
-    area_threshold = 1e4
+    area_threshold = 1e4,
+    depressions_path = "/scratch-3/cogier/data/BonnePierre_input/BonnePierre_LacTemporal.gpkg"
 )
 
 # plot boxplot with the 4 sub boxplot: all contributions, surf, bed, f

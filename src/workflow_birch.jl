@@ -19,7 +19,7 @@ using Serialization
 datadir_in = "/scratch-3/cogier/data/Birch_input"
 datadir_out = "/scratch-3/cogier/data/Birch_output"
 
-### BED from grab et al 2021
+### BED from grab et al 2021 (YEAR 2011 and 2017 for surface raster)
 bed = load_bedrock(joinpath(datadir_in, "B32-06_GlacierBed.tif"))
 
 
@@ -53,6 +53,20 @@ plot_uncertainty_bed(bedrock_err_plus, bedrock_err_minus,
     "Bedrock: Uncertainty", "Uncertainty +", "Uncertainty -",
     joinpath(datadir_out, "bedrock_uncertainty.png"))
 
+
+### BEdrock after glacier collapse
+bed_sit = load_bedrock(joinpath(datadir_in, "B32-06_birch_glacier-bed_SIT-2020_10m_lv95_ln02.tif"))
+bed_sit_resamp = clean_raster(resample(bed_sit; to=bed_resamp, method=:bilinear)) # resample to 2m resolution
+bed_icefree = load_bedrock(joinpath(datadir_in,"dronecam-2025-06-10T08_00_00-DTM_LiDAR_20250610.tif")) # ice free bedrock after glacier collapse (10 June
+bed_icefree_resamp = clean_raster(resample(bed_icefree; to=bed_resamp, method=:bilinear)) # resample to 2m resolution
+bed_diff = map((a,b) -> (isfinite(a) && isfinite(b)) ? Float32(a - b) : NaN32,
+                bed_resamp, bed_icefree_resamp)
+plot_bedrock(bed_diff; savepath=joinpath(datadir_out, "Birch_bedrock_diff_grab21-icefree.png"))
+
+
+
+
+
 ### THICKNESS
 
 thickness = load_ice_thickness(joinpath(datadir_in, "B32-06_IceThickness.tif"))
@@ -65,6 +79,9 @@ plot_ice_thickness(thickness;savepath=joinpath(datadir_out, "Birch_thickness_gra
 plot_ice_thickness(thickness_25;savepath=joinpath(datadir_out, "Birch_thickness_2025"))
 plot_ice_thickness(thickness_23;savepath=joinpath(datadir_out, "Birch_thickness_2023"))
 plot_ice_thickness(thickness_25 .- thickness_23; savepath=joinpath(datadir_out, "Birch_thickness_diff_2025-2023"))
+
+exit()
+
 
 ### write rasters for later analysis ###
 write(joinpath(datadir_out, "Birch_surface_2023_cr.tif"), surf_23; force=true)
@@ -188,7 +205,6 @@ for run in runs
 
     end
 end
-
 
 
 

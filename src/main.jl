@@ -21,7 +21,6 @@ output_dir = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
 mkpath(output_dir)
 
 
-
 runs = [
     (
         name = "2021_July",

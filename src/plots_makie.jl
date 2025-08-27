@@ -3,6 +3,7 @@
 using CairoMakie
 include("LakeAnalysis.jl")
 using .LakeAnalysis
+using GeoInterface
 
 # --- Your JoG style setup ---
 two_column_cm   = 17.8
@@ -205,6 +206,43 @@ function plot_uncertainty_bed(r1::Raster, r2::Raster, title::String, subtitle1::
     return fig
 end
 
+# Draw outer rings from a Polygon/MultiPolygon vector file (SHP/GPKG).
+# Reprojects to the raster CRS if needed.
+function _overlay_depressions!(ax, vec_path::AbstractString, raster_for_crs::Raster)
+    ArchGDAL.read(vec_path) do ds
+        lyr = ArchGDAL.getlayer(ds, 0)
+
+        # CRS handling
+        src_srs = ArchGDAL.getspatialref(lyr)
+        dst_srs = ArchGDAL.importWKT(String(crs(raster_for_crs)))
+        transf = (src_srs !== nothing && ArchGDAL.toWKT(src_srs) != ArchGDAL.toWKT(dst_srs)) ?
+                 ArchGDAL.createcoordinatetransform(src_srs, dst_srs) : nothing
+
+        for feat in lyr
+            g = ArchGDAL.getgeom(feat)
+
+            # Uniformly iterate polygons → rings via GeoInterface
+            # Wrap to MultiPolygon to handle both Polygon & MultiPolygon
+            mp = GeoInterface.MultiPolygon(g)
+            for poly in GeoInterface.getgeom(mp)
+                # exterior ring is ring index 1; but draw all rings (exterior + holes) anyway
+                for ring in GeoInterface.getgeom(poly)
+                    coords = GeoInterface.coordinates(ring)  # Vector of (x,y)
+                    xs = Vector{Float64}(undef, length(coords))
+                    ys = Vector{Float64}(undef, length(coords))
+                    @inbounds for i in eachindex(coords)
+                        x, y = coords[i]
+                        if transf !== nothing
+                            x, y, _ = ArchGDAL.transform_point(transf, x, y, 0.0)
+                        end
+                        xs[i] = x; ys[i] = y
+                    end
+                    lines!(ax, xs, ys; color = (:black, 0.35), linewidth = 1.0)
+                end
+            end
+        end
+    end
+end
 
 
 function plot_lake_depth(
@@ -216,7 +254,8 @@ function plot_lake_depth(
     min_depth::Float64 = 2.0,
     show_all_lakes::Bool = false,
     area::Union{Raster, Nothing} = nothing,
-    area_threshold::Float64 = 1e5
+    area_threshold::Float64 = 1e5,
+    depressions_path::Union{Nothing,String} = nothing
 )
     glacier_mask = thickness .> 0
     x, y, Z = get_axes_and_matrix(lakes)
@@ -273,6 +312,11 @@ function plot_lake_depth(
             linewidth = 1.0
         )
     end
+
+   # Overlay outlines 
+   if depressions_path !== nothing
+        _overlay_depressions!(ax, depressions_path, lakes) 
+   end
 
     # Overlay hydraulic head contours
     if phi !== nothing

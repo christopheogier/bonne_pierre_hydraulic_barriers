@@ -69,7 +69,7 @@ plot_lake_depth(
     show_all_lakes = true,
     area = area_stoch,
     area_threshold = 1e4,
-    depressions_path = "/scratch-3/cogier/data/BonnePierre_input/BonnePierre_LacTemporal.gpkg"
+    depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240407.shp"
 )
 
 # plot boxplot with the 4 sub boxplot: all contributions, surf, bed, f

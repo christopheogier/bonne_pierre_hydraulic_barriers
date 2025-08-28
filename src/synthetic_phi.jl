@@ -14,7 +14,7 @@ H0  = 50.0                        # baseline thickness (m)
 Ai  = 910.0                       # ice density (kg/m^3)
 Aw  = 1000.0                      # water density (kg/m^3)
 ρi_over_ρw = Ai / Aw              # ~0.910
-f_list = [0.9, 1.0]               # flotation fractions to compare
+f_list = [1.0]               # flotation fractions to compare
 A_srf = 10.0                      # surface curvature amplitude (m)
 
 # -------- shapes --------
@@ -53,7 +53,7 @@ for (j, (title_txt, zb, zs)) in enumerate(geoms)
     ax = Axis(fig[1, j],
         title = title_txt,
         xlabel = "Distance x (m)",
-        ylabel = (j == 1 ? "Head h (m w.e.)" : ""),
+        ylabel = "Elevation (m)",
         aspect = 1.8
     )
 
@@ -79,11 +79,11 @@ for (j, (title_txt, zb, zs)) in enumerate(geoms)
     # overlay heads
     for f in f_list
         h = h_head(f, zs, zb)
-        lines!(ax, x, h; label=(j == 1 ? "f=$(f)" : ""))
+        lines!(ax, x, h; label=(j == 1 ? "hydraulic head (f=$(Int(f)))" : ""))
     end
 
     # surface LAST so it is visible
-    lines!(ax, x, zs; color=:gray, linewidth=2, linestyle=:dot,
+    lines!(ax, x, zs; color=:gray, linewidth=2,
            label=(j == 1 ? "surface" : ""))
 
     # padding

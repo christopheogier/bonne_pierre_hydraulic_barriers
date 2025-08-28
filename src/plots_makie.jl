@@ -4,6 +4,7 @@ using CairoMakie
 include("LakeAnalysis.jl")
 using .LakeAnalysis
 using GeoInterface
+using Shapefile
 
 # --- Your JoG style setup ---
 two_column_cm   = 17.8
@@ -206,39 +207,17 @@ function plot_uncertainty_bed(r1::Raster, r2::Raster, title::String, subtitle1::
     return fig
 end
 
-# Draw outer rings from a Polygon/MultiPolygon vector file (SHP/GPKG).
-# Reprojects to the raster CRS if needed.
-function _overlay_depressions!(ax, vec_path::AbstractString, raster_for_crs::Raster)
-    ArchGDAL.read(vec_path) do ds
-        lyr = ArchGDAL.getlayer(ds, 0)
+function _overlay_depressions!(ax, shp_path::String; linecolor=:black, fillcolor=(:black, 0.2), lw=1.0)
+    table = Shapefile.Table(shp_path)
 
-        # CRS handling
-        src_srs = ArchGDAL.getspatialref(lyr)
-        dst_srs = ArchGDAL.importWKT(String(crs(raster_for_crs)))
-        transf = (src_srs !== nothing && ArchGDAL.toWKT(src_srs) != ArchGDAL.toWKT(dst_srs)) ?
-                 ArchGDAL.createcoordinatetransform(src_srs, dst_srs) : nothing
-
-        for feat in lyr
-            g = ArchGDAL.getgeom(feat)
-
-            # Uniformly iterate polygons → rings via GeoInterface
-            # Wrap to MultiPolygon to handle both Polygon & MultiPolygon
-            mp = GeoInterface.MultiPolygon(g)
-            for poly in GeoInterface.getgeom(mp)
-                # exterior ring is ring index 1; but draw all rings (exterior + holes) anyway
-                for ring in GeoInterface.getgeom(poly)
-                    coords = GeoInterface.coordinates(ring)  # Vector of (x,y)
-                    xs = Vector{Float64}(undef, length(coords))
-                    ys = Vector{Float64}(undef, length(coords))
-                    @inbounds for i in eachindex(coords)
-                        x, y = coords[i]
-                        if transf !== nothing
-                            x, y, _ = ArchGDAL.transform_point(transf, x, y, 0.0)
-                        end
-                        xs[i] = x; ys[i] = y
-                    end
-                    lines!(ax, xs, ys; color = (:black, 0.35), linewidth = 1.0)
-                end
+    for geom in table.geometry
+        # Each geom can be Polygon or MultiPolygon
+        for poly in GeoInterface.getgeom(geom)
+            for ring in GeoInterface.getgeom(poly)  # outer + inner rings
+                coords = GeoInterface.coordinates(ring)
+                xs = first.(coords)
+                ys = last.(coords)
+                poly!(ax, xs, ys; color=fillcolor, strokecolor=linecolor, strokewidth=lw)
             end
         end
     end
@@ -313,10 +292,10 @@ function plot_lake_depth(
         )
     end
 
-   # Overlay outlines 
-   if depressions_path !== nothing
-        _overlay_depressions!(ax, depressions_path, lakes) 
-   end
+    # outlines for surface depressions 
+    if depressions_path !== nothing
+        _overlay_depressions!(ax, depressions_path; linecolor=(:green,0.7), fillcolor=(:green, 0.3), lw=1.0)
+    end
 
     # Overlay hydraulic head contours
     if phi !== nothing

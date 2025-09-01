@@ -1,13 +1,10 @@
 ### analyse stochastic lake depth and plot results
 using Pkg
 Pkg.activate("/scratch-3/cogier/hydraulic_barriers/")
-using Rasters
-using DataFrames
-using CSV
-using Statistics
+using Rasters, DataFrames, CSV, Statistics
 using WhereTheWaterFlowsSubglacially, WhereTheWaterFlows
 const WWFS = WhereTheWaterFlowsSubglacially
-const WWF = WhereTheWaterFlows
+const WWF  = WhereTheWaterFlows
 using Serialization
 
 include("LakeAnalysis.jl")
@@ -15,31 +12,30 @@ include("plots_makie.jl")
 include("functions.jl")
 using .LakeAnalysis
 
-# --- Paths ---
-name = "2024_October"
+# --- Params / Paths ---
+name = "2024_June"   # or "2024_October"
 datadir_WWFS_input = "/scratch-3/cogier/data/BonnePierre_input/WWFS_input"
-output_dir = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
+output_dir         = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
 
-# --- Load aggregated Monte Carlo result ---
-# all unc.
-aggr1 = deserialize(joinpath(output_dir, "aggr1_2024_October.jls"))
-# only bed unc.
-aggr2 = deserialize(joinpath(output_dir, "aggr2_2024_October.jls"))
-# only surf unc.
-aggr3 = deserialize(joinpath(output_dir, "aggr3_2024_October.jls"))
-# only floatfrac unc.
-aggr4 = deserialize(joinpath(output_dir, "aggr4_2024_October.jls"))
+# Map run name -> thickness file
+thickness_file = Dict(
+    "2024_October" => "ice_thickness_2024_oct.tif",
+    "2024_June"    => "ice_thickness_2024_june.tif",
+)[name]
 
-# Reconstruct rasters from arrays
-thickness = clean_raster(Raster(joinpath(datadir_WWFS_input, "ice_thickness_2024_oct.tif")))
-lake_depth_mean = Raster(aggr1.lakes_depth_fs, dims(thickness))
-area_stoch = Raster(aggr1.areas,  dims(thickness))
+# --- Load aggregated Monte Carlo results (parametric in `name`) ---
+aggr1 = deserialize(joinpath(output_dir, "aggr1_$(name).jls")) # all uncertainties
+aggr2 = deserialize(joinpath(output_dir, "aggr2_$(name).jls")) # bed only
+aggr3 = deserialize(joinpath(output_dir, "aggr3_$(name).jls")) # surface only
+aggr4 = deserialize(joinpath(output_dir, "aggr4_$(name).jls")) # flotation only
 
-
+# --- Reconstruct rasters from arrays (use thickness grid) ---
+thickness        = clean_raster(Raster(joinpath(datadir_WWFS_input, thickness_file)))
+lake_depth_mean  = Raster(aggr1.lakes_depth_fs, dims(thickness))
+area_stoch       = Raster(aggr1.areas,          dims(thickness))
 
 # --- Analyze ---
-println("  Analyzing stochastic lake depth (free surface)...")
-
+println("  Analyzing stochastic lake depth (free surface) for $(name)...")
 analysis = analyze_lakes(lake_depth_mean, thickness; min_depth=2.0)
 
 df = DataFrame(
@@ -55,45 +51,35 @@ df = DataFrame(
     largest_single_volume_m3 = analysis.LargestLake.volume
 )
 
-CSV.write(joinpath(output_dir, "WWFS_stoch_lake_summary.csv"), df)
+CSV.write(joinpath(output_dir, "WWFS_stoch_lake_summary_$(name).csv"), df)
 
-# --- Plot ---
-# mean lake depth and mean area. Put optional surface depression as outline (need to open the file beforehand)
+# --- Plot mean lake depth + area ---
 plot_lake_depth(
     lake_depth_mean,
     thickness,
     analysis,
     nothing, # phi
-    joinpath(output_dir, "stochastic_lake_depth.png");
+    joinpath(output_dir, "stochastic_lake_depth_$(name).png");
     min_depth = analysis.min_depth,
     show_all_lakes = true,
     area = area_stoch,
     area_threshold = 1e4,
-    depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240407.shp"
+    depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp"
 )
 
-# plot boxplot with the 4 sub boxplot: all contributions, surf, bed, f
-# Distribution of lake volumes
-boxplot_lake_vol_stoch(aggr1;
-    aggr2 = aggr2,
-    aggr3 = aggr3,
-    aggr4 = aggr4,
-    savepath = joinpath(output_dir, "lake_volume_comparison.png")
+# --- Boxplot: contributions (all, surface, bed, flotation) ---
+boxplot_lake_vol_stoch(
+    aggr1; aggr2=aggr2, aggr3=aggr3, aggr4=aggr4,
+    savepath = joinpath(output_dir, "lake_volume_comparison_$(name).png")
 )
 
-# boxplto with flotation correlation lengths contribution to total lake volume
+# --- Boxplot: flotation correlation-length sensitivity (optional, filenames fixed) ---
+aggr_f10   = deserialize(joinpath(output_dir, "aggr_flot_L10.jls"))
+aggr_f100  = deserialize(joinpath(output_dir, "aggr_flot_L100.jls"))
+aggr_f1000 = deserialize(joinpath(output_dir, "aggr_flot_L1000.jls"))
 
-aggr1 = deserialize(joinpath(output_dir, "aggr_flot_L10.jls"))
-aggr2 = deserialize(joinpath(output_dir, "aggr_flot_L100.jls"))
-aggr3 = deserialize(joinpath(output_dir, "aggr_flot_L1000.jls"))
-
-labels = ["L=10m", "L=100m", "L=1000m"]
-
-boxplot_lake_vol_stoch(aggr1;
-    aggr2 = aggr2,
-    aggr3 = aggr3,
-    labels = labels,
-    savepath = joinpath(output_dir, "boxplot_lake_vol_flotation.png")
+boxplot_lake_vol_stoch(
+    aggr_f10; aggr2=aggr_f100, aggr3=aggr_f1000,
+    labels = ["L=10m", "L=100m", "L=1000m"],
+    savepath = joinpath(output_dir, "boxplot_lake_vol_flotation_$(name).png")
 )
-
-

@@ -3,6 +3,9 @@
 using Rasters
 using ArchGDAL
 using CSV, DataFrames, NearestNeighbors
+using WhereTheWaterFlowsSubglacially
+const WWFS = WhereTheWaterFlowsSubglacially
+import Contour: contour, lines, coordinates
 
 """
     clean_raster(r::Raster) -> Raster{Float32}
@@ -104,14 +107,6 @@ function compute_glacier_outline(thickness::Raster)
 end
 
 
-module UncUtils
-
-using Rasters, CSV, DataFrames, NearestNeighbors
-import Contour: contour, lines, coordinates
-
-
-export load_and_extend_gpr, compute_distance_to_gpr, unc_propagate, extract_outline_from_thickness
-
 function extract_outline_from_thickness(thickness::Raster)
     x, y = collect.(dims(thickness))
     Z = Matrix(thickness) .> 0  # binary mask
@@ -165,4 +160,21 @@ function unc_propagate(dist_raster::Raster, h_mean::Real) # so that float or int
     return u_minus, u_plus
 end
 
-end # module
+function surface_uncertainty_from_smoothing(surface, bed, smooth_coeff,mask) # half-window (per your current convention) 
+
+    smooth_half_window = smooth_coeff / 2 
+
+    # Coordinates from Raster.jl 
+    x, y = dims(surface) 
+
+    # below y = x is a trick as WWFS.smooth_surface test: @assert dy==dx and here dy = -1 (dx=1) 
+    surface_smooth = WWFS.smooth_surface(x, x, surface, bed, smooth_half_window, mask); 
+
+    # Deterministic one-sigma field 
+    std = abs.(surface .- surface_smooth); 
+
+    # If considering the "true" surface to be between both, take their average 
+    avg= ((surface .+ surface_smooth) ./ 2) .- surface_smooth; #err = ±1σ ≈ 68%
+
+    return (smooth = surface_smooth, std = std, avg = avg) 
+end

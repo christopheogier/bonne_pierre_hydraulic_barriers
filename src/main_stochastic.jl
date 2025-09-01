@@ -21,20 +21,41 @@ datadir_input = "/scratch-3/cogier/data/BonnePierre_input"
 datadir_WWFS_input = "/scratch-3/cogier/data/BonnePierre_input/WWFS_input"
 output_dir = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
 
-# Load surface and thickness for 2024 October
-name = "2024_October"
-# run case for June 2024 too, using surface_filled with 100000m3 lake
-surface = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"))) 
-surface_smooth_avg = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_avg_01smooth.tif"))) # average of resampled and smoothed DEM
-surface_smooth = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_smooth_01.tif"))) # smoothed DEM
-thickness = clean_raster(Raster(joinpath(datadir_WWFS_input, "ice_thickness_2024_oct.tif")))
-bedrock = clean_raster(Raster(joinpath(datadir_WWFS_input,"bedrock_resamp_1m.tif")))
+
+# --- Choose which run to execute ---
+run_name = "2024_June"       # or "2024_October"
+# Name used in all outputs below
+
+# Build file paths per run (matching what you wrote out in prepare.jl)
+paths = if run_name == "2024_October"
+    Dict(
+        :surface_raw   => joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"),
+        :surface_smooth=> joinpath(datadir_WWFS_input, "surface_2024_oct_smooth_01.tif"),
+        :surface_err   => joinpath(datadir_WWFS_input, "surface_2024_oct_err_avg_01smooth.tif"),
+        :thickness     => joinpath(datadir_WWFS_input, "ice_thickness_2024_oct.tif"),
+        :bedrock       => joinpath(datadir_WWFS_input, "bedrock_resamp_1m.tif")
+    )
+elseif run_name == "2024_June"
+    Dict(
+        :surface_raw   => joinpath(datadir_WWFS_input, "surface_2024_june.tif"),
+        :surface_smooth=> joinpath(datadir_WWFS_input, "surface_2024_june_smooth_01.tif"),
+        :surface_err   => joinpath(datadir_WWFS_input, "surface_2024_june_err_avg_01smooth.tif"),
+        :thickness     => joinpath(datadir_WWFS_input, "ice_thickness_2024_june.tif"),
+        :bedrock       => joinpath(datadir_WWFS_input, "bedrock_resamp_1m.tif")
+    )
+end
+
+surface         = clean_raster(Raster(paths[:surface_raw]))
+surface_smooth  = clean_raster(Raster(paths[:surface_smooth]))
+surface_err     = clean_raster(Raster(paths[:surface_err]))
+thickness       = clean_raster(Raster(paths[:thickness]))
+beddem          = clean_raster(Raster(paths[:bedrock]))
+
 
 #load uncertainties
 bed_err_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "bedrock_err_std_1m.tif")))
 # import lus and minus sigma if we can force WWF within two assymetric bound?
-#surface unc
-surface_2024_oct_smooth_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_oct_err_std_smooth01.tif")))
+
 
 
 ################################ WWFS stochastic ########################################
@@ -44,7 +65,7 @@ surface_2024_oct_smooth_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "
 #kernel = "gauss"
 cov_fn = WWFS.GRF.gaussian_kernel #or WWFS.GRF.exponential_kernel
 range_bed = 200 #m, see XDEM variograms outputs
-range_surf = 500 #m it seems correlated all over the dem area !
+range_surf = 10 #m #variogram indicate glacier-size length, i expect it to be equal to the smoothing length scale
 corr_length_f = 100 #[10,100,1000] # ARBITRARY FOR NOW, otherwise mae a sensitivity analysis
 
 
@@ -54,26 +75,25 @@ corr_length_f = 100 #[10,100,1000] # ARBITRARY FOR NOW, otherwise mae a sensitiv
 #So, in Monte Carlo simulations: The pixel-wise variability decreases, and The realizations look smoother, with fewer high-frequency perturbations
 
 # correlation lengths
-corr_length_bed = range_bed / sqrt(3)  # m 
+corr_length_bed = 200 #range_bed / sqrt(3)  # m 
 #chatgpt: For models where the variogram approaches the sill asymptotically, 
 #the practical range is defined as the distance at which the variogram reaches 95% of the sill. 
 #This practical range relates to the correlation length as follows:​
 # Gaussian Model: Practical range ≈ sqrt(3) x ℓ​ = 1.73 x l
 # Exponential Model: Practical range ≈ 3 x ℓ​
 # Spherical Model> range ≈ 0.66 x l
-corr_length_surf = range_surf / sqrt(3)      # placeholder for DEM error corr. length
+corr_length_surf = 10 #range_surf / sqrt(3)      # placeholder for DEM error corr. length
 
 
 
 # Input fields (already loaded), but also convert in float for WWFS
 surfdem = surface_smooth
-beddem = bedrock
 rmask     = thickness .> 0
 floatfrac = 1 .* ones(size(surfdem))
 source    = ones(size(surfdem)) # what is "source" ?
 
 # Uncertainties
-surfdem_uc   = Uncertainty(absuc=surface_2024_oct_smooth_std, reluc=0.0, correlation_length=corr_length_surf, covariance_fn=cov_fn )  
+surfdem_uc   = Uncertainty(absuc=surface_err, reluc=0.0, correlation_length=corr_length_surf, covariance_fn=cov_fn )  
 beddem_uc    = Uncertainty(absuc=bed_err_std, reluc=0.0, correlation_length=corr_length_bed, covariance_fn=cov_fn)
 floatfrac_uc = Uncertainty(absuc=0.0, reluc=0.1, correlation_length=corr_length_f,covariance_fn=cov_fn) 
 #  f = 0.6 to 1.11 in Chu et aL 2016 (greenland)
@@ -102,7 +122,7 @@ for (i, (surf_uc, bed_uc, float_uc)) in enumerate([
     outlet = [CartesianIndices((1:10, 1:length(y)))[:],
               CartesianIndices((1:10, 1:(length(y)÷2)))[:]])
               
-    println("🔄 Running WWFS stochastic for aggr$i...")
+    println("🔄 Running WWFS stochastic for aggr$i on $run_name...")
     model, get_sample, aggregate = WWFS.make_fns(step(x),
                                                  surfdem, surf_uc,
                                                  beddem, bed_uc,
@@ -114,8 +134,8 @@ for (i, (surf_uc, bed_uc, float_uc)) in enumerate([
     aggr = map_mc(model, get_sample, aggregate, 20)
     #(:areas, :areas_extra, :melt_freeze, :lakes_depth, :lakes_mask, :lakes_depth_fs, :lakes_mask_fs, :sc_locs, :kappas, :catchments, :catchment_fluxes, :n_samples)
 
-    serialize(joinpath(output_dir, "aggr$(i)_2024_October.jls"), aggr)
-    println("✅ Saved aggr$i to disk.")
+    serialize(joinpath(output_dir, "aggr$(i)_$(run_name).jls"), aggr)
+    println("✅ Saved aggr$i to disk for $run_name.")
 
     # save TIF results
     #write(joinpath(output_dir, "lake_depth_stoch_mean.tif"), Raster(aggr.lakes_depth_fs, dims(surface)), force=true)

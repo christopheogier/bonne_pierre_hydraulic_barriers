@@ -10,7 +10,6 @@ using Rasters
 using Statistics
 include("plots_makie.jl")
 include("functions.jl")
-using .UncUtils
 using WhereTheWaterFlowsSubglacially
 const WWFS = WhereTheWaterFlowsSubglacially
 
@@ -45,8 +44,11 @@ surface_2024_june = load_surface(joinpath(datadir_in, "Lidar_juin2024_Bonne_Pier
 surface_2024_oct = load_surface(joinpath(datadir_in, "Lidar_oct2024_Bonne_Pierre_glacier.tif"), bedrock) # 50cm
 
 # Resample October DEM to 2021 DEM resolution: from 50cm to 1m
-method_inter =:cubic #Bilinear, near (weird) or cubic 
+method_inter =:bilinear #Bilinear, near (weird) or cubic 
 surface_2024_oct_resamp = resample(surface_2024_oct; to=surface_2021_cr, method=method_inter)
+#resample June too (to match bed and surface for later smoothing)
+surface_2024_june = clean_raster(resample(surface_2024_june; to=surface_2021_cr, method=method_inter))
+println("⚠️  Warning: resample introduced Missing values — run clean_raster() before using.")
 
 # Resample bedrock and ice thickness to surface 2021 resolution
 bed_resamp = resample(bedrock; to=surface_2021_cr, method=method_inter)
@@ -61,22 +63,29 @@ ice_thickness_2024_nov_resamp = resample(ice_thickness_2024_nov; to=surface_2021
 bedrock_gpr_plus = resample(bedrock_gpr_plus_10m; to=bed_resamp, method=method_inter)
 bedrock_gpr_minus = resample(bedrock_gpr_minus_10m; to=bed_resamp, method=method_inter)
 
+# Compute ice thickness for 2021, June 2024, and October 2024
+ice_thickness_2021 = compute_ice_thickness(surface_2021_cr, bedrock,method_inter)
+ice_thickness_2024_june = compute_ice_thickness(surface_2024_june, bedrock,method_inter)
+ice_thickness_2024_oct = compute_ice_thickness(surface_2024_oct_resamp, bedrock,method_inter)
+
 # mask
 mask = bed_resamp .> 0
 
-### Compute surface uncertainties for October 2024 (due to smoothing)
-#smoothing
-smooth_coeff = 0.1 # as fraction of thickness
-smooth_half_window = smooth_coeff / 2
-x, y = dims(surface_2024_oct_resamp)
-# below y = x is a trick as WWFS.smooth_surface test: @assert dy==dx and here dy = -1 (dx=1)
-surface_2024_oct_smooth = WWFS.smooth_surface(x, x, surface_2024_oct_resamp, bed_resamp, smooth_half_window, mask)
-# Determinstic error field:
-# one sigma standard deviation:
-surface_2024_oct_std = abs.(surface_2024_oct_resamp .- surface_2024_oct_smooth)
-# if considered the surface in between the two surfaces, then the error is half of the difference
-surface_2024_oct_resamp_avg = (surface_2024_oct_resamp .+ surface_2024_oct_smooth) ./ 2  # surface_2024_oct_resamp is the ground truth
-surface_2024_oct_std_bis = abs.(surface_2024_oct_resamp_avg .- surface_2024_oct_smooth) ./ 1 # divided by one because hypothesis: err = ±1σ ≈ 68%
+### Compute surface uncertainties due to smoothing 
+#(Determinstic error field)# one sigma standard deviation
+
+smooth_coeff = 0.1  # as total fraction of thickness (note that WWFS.smooth_surface uses half-window)
+
+# --- October 2024 ---
+oct = surface_uncertainty_from_smoothing(surface_2024_oct_resamp, bed_resamp, smooth_coeff, mask)
+surface_2024_oct_smooth   = oct.smooth
+surface_2024_oct_err_avg = oct.avg
+
+# --- June 2024  ---
+jun = surface_uncertainty_from_smoothing(surface_2024_june, bed_resamp, smooth_coeff, mask)
+surface_2024_june_smooth   = jun.smooth
+surface_2024_june_err_avg = jun.avg
+
 
 ### Compute GPR uncertainty maps 
 u_plus_gpr  = bedrock_gpr_plus .- bed_resamp    # ≥ 0
@@ -135,11 +144,6 @@ mask = [!ismissing(v[raster_name]) && v[raster_name] > 0 for v in vals]
 gpr_points = gpr_points[mask, :]
 
 
-# Compute ice thickness for 2021, June 2024, and October 2024
-ice_thickness_2021 = compute_ice_thickness(surface_2021_cr, bedrock,method_inter)
-ice_thickness_2024_june = compute_ice_thickness(surface_2024_june, bedrock,method_inter)
-ice_thickness_2024_oct = compute_ice_thickness(surface_2024_oct_resamp, bedrock,method_inter)
-
 
 # plotting
 
@@ -193,7 +197,8 @@ write(joinpath(datadir_WWFS_input, "bedrock_err_interp_plus_1m.tif"),u_plus_inte
 write(joinpath(datadir_WWFS_input, "surface_2021_cr.tif"), surface_2021_cr,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"), surface_2024_oct_resamp,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_june.tif"), surface_2024_june,force=true)
-write(joinpath(datadir_WWFS_input, "surface_2024_oct_err_std_smooth01.tif"), surface_2024_oct_std, force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_oct_smooth_01.tif"), surface_2024_oct_smooth, force=true)
+write(joinpath(datadir_WWFS_input, "surface_2024_june_smooth_01.tif"), surface_2024_june_smooth, force=true)
 # average of resampled and smoothed DEM
-write(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_avg_01smooth.tif"), surface_2024_oct_resamp_avg, force=true)
+write(joinpath(datadir_WWFS_input, "surface_2024_oct_err_avg_01smooth.tif"), surface_2024_oct_err_avg, force=true)
+write(joinpath(datadir_WWFS_input, "surface_2024_june_err_avg_01smooth.tif"), surface_2024_june_err_avg, force=true)

@@ -57,8 +57,9 @@ for (j, (title_txt, zb, zs)) in enumerate(geoms)
         aspect = 1.8
     )
 
-    # bed
-    lines!(ax, x, zb; color=:black, linewidth=1, label=(j == 1 ? "bed" : ""))
+    # surface LAST so it is visible
+    lines!(ax, x, zs; color=:gray, linewidth=2,
+           label=(j == 1 ? "surface" : ""))
 
     # compute φ and filled φ (for pockets)
     phi = h_head(1.0, zs, zb)
@@ -68,6 +69,13 @@ for (j, (title_txt, zb, zs)) in enumerate(geoms)
     end
     hwp = clamp.(phi_filled .- phi, 0, Inf)
 
+    # overlay heads
+    for f in f_list
+        h = h_head(f, zs, zb)
+        lines!(ax, x, h; label=(j == 1 ? "hydraulic head (f=$(Int(f)))" : ""))
+    end
+
+
     # water pocket shading
     poly!(ax,
         vcat(x, reverse(x)),
@@ -75,16 +83,11 @@ for (j, (title_txt, zb, zs)) in enumerate(geoms)
         color = (:lightblue, 0.5),
         strokewidth = 0
     )
+    
+    # bed
+    lines!(ax, x, zb; color=:black, linewidth=1, label=(j == 1 ? "bed" : ""))
 
-    # overlay heads
-    for f in f_list
-        h = h_head(f, zs, zb)
-        lines!(ax, x, h; label=(j == 1 ? "hydraulic head (f=$(Int(f)))" : ""))
-    end
-
-    # surface LAST so it is visible
-    lines!(ax, x, zs; color=:gray, linewidth=2,
-           label=(j == 1 ? "surface" : ""))
+   
 
     # padding
     yall = vcat(zb, zs, phi, [h_head(f, zs, zb) for f in f_list]...)

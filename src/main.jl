@@ -43,7 +43,7 @@ runs = [
 min_depths = 2.#[0.0, 2.0]           # meters
 smooth_coeffs = 0.1#[0.0, 0.1]        # as fraction of thickness
 #filling_fractions = 0.#[0.0, 0.75]   # fraction of supraglacial filling
-filling_volume = [0.,100000.0] # m3, volume to fill the largest supraglacial lake
+filling_volume = 100000.#[0.,100000.0] # m3, volume to fill the largest supraglacial lake
 
 # Summary
 summaries = DataFrame()
@@ -131,6 +131,9 @@ for min_depth in min_depths
                     # Update only lake pixels with water to ice-converted water height
                     surface_fill[supralake_mask] .= surface[supralake_mask] .+ lake_surf[supralake_mask] ./ 0.9
                     # that makes the surafce not flat anymore but that is fine, since we are in ice equivalent 
+                    suffix = smooth_coeff > 0 ? "_smoothed" : "_raw"
+                    write(joinpath(output_dir, "$(run.name)$(suffix)_surface_with_lakefilled.tif"),surface_fill; force=true)
+
                 else
                     surface_fill = surface
 
@@ -197,7 +200,11 @@ for min_depth in min_depths
                 # Plotting
 
                 plot_lake_depth(lakes_free_surf,thickness,analysis,
-                    phi,out_prefix * "_lakes.png";min_depth = analysis.min_depth,show_all_lakes = true, area = areas[1])
+                    phi,out_prefix * "_lakes+depressions.png";min_depth = analysis.min_depth,show_all_lakes = true, area = areas[1],area_threshold = 1e5,
+                    depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp")
+
+                    #depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp"
+
 
                 #plot_hydraulic_head(phi, out_prefix * "_phi.png")
 

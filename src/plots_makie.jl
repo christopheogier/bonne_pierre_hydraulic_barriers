@@ -225,7 +225,7 @@ end
 
 
 function plot_lake_depth(
-    lakes::Raster,
+    lakes::Union{Raster,Nothing},                # ← allow `nothing`
     thickness::Raster,
     analysis::LakeAnalysisResult,
     phi::Union{Raster, Nothing},
@@ -237,18 +237,11 @@ function plot_lake_depth(
     depressions_path::Union{Nothing,String} = nothing
 )
     glacier_mask = thickness .> 0
-    x, y, Z = get_axes_and_matrix(lakes)
     mask_array = collect(Bool.(glacier_mask))
 
-    # Apply min_depth and glacier mask
-    Z_lake = copy(Z)
-    Z_lake[Z_lake .< min_depth] .= NaN
-    Z_lake[.!mask_array] .= NaN
-    Z_lake[Z_lake .== 0] .= NaN
-
-    
-    vmin, vmax = finite_minmax(Z_lake)
-    vmin = min_depth
+    # pick axes from lakes if present, otherwise from thickness
+    base = isnothing(lakes) ? thickness : lakes
+    x, y, _ = get_axes_and_matrix(base)
 
     fig = Figure(size=(800, 600))
     ax = Axis(fig[1, 1];
@@ -258,19 +251,31 @@ function plot_lake_depth(
         title = "Water pocket depth (m > $(min_depth))"
     )
 
-    # Plot lake depth
-    hm = heatmap!(ax, x, y, Z_lake;
-        colormap = :blues,
-        colorrange = (vmin, vmax)
-    )
+    # Plot lake depth heatmap if `lakes` provided
+    hm = nothing
+    if lakes !== nothing
+        _, _, Z = get_axes_and_matrix(lakes)
+        Z_lake = copy(Z)
+        Z_lake[Z_lake .< min_depth] .= NaN
+        Z_lake[.!mask_array] .= NaN
+        Z_lake[Z_lake .== 0] .= NaN
 
-    # Plot largest lake outline
-    if any(analysis.LargestLake.mask)
-        labeled = Int.(analysis.LargestLake.mask)
-        #contour!(ax, x, y, labeled; levels=[0.5], color=:red, linewidth=1.5)
+        vmin, vmax = finite_minmax(Z_lake)
+        vmin = min_depth
+
+        hm = heatmap!(ax, x, y, Z_lake;
+            colormap = :blues,
+            colorrange = (vmin, vmax)
+        )
     end
 
-    # Optionally plot all lake masks
+    # Plot largest lake outline (unchanged)
+    if any(analysis.LargestLake.mask)
+        labeled = Int.(analysis.LargestLake.mask)
+        # contour!(ax, x, y, labeled; levels=[0.5], color=:red, linewidth=1.5)
+    end
+
+    # Optionally plot all lake masks (unchanged)
     if show_all_lakes
         for (_, mask) in analysis.lake_masks
             if any(mask)
@@ -280,24 +285,24 @@ function plot_lake_depth(
         end
     end
 
-    # Overlay upslope area outline (if provided)
+    # Overlay upslope area outline (unchanged)
     if area !== nothing
         _, _, Z_area = get_axes_and_matrix(area)
-        area_mask = (Z_area .> area_threshold) .& mask_array  
+        area_mask = (Z_area .> area_threshold) .& mask_array
         area_int = Int.(area_mask)
         contour!(ax, x, y, area_int;
             levels = [0.5],
-            color = (:darkblue,0.4),
+            color = (:darkblue,0.5), # 0.5 for tranparency
             linewidth = 1.0
         )
     end
 
-    # outlines for surface depressions 
+    # Overlay outlines (unchanged)
     if depressions_path !== nothing
         _overlay_depressions!(ax, depressions_path; linecolor=(:green,0.7), fillcolor=(:green, 0.3), lw=1.0)
     end
 
-    # Overlay hydraulic head contours
+    # Overlay hydraulic head contours (unchanged)
     if phi !== nothing
         _, _, Z_phi = get_axes_and_matrix(phi)
         Z_phi[.!mask_array] .= NaN
@@ -307,42 +312,41 @@ function plot_lake_depth(
         contour!(ax, x, y, Z_phi; levels=levels, linewidth=0.8, color=:black)
     end
 
-    # Glacier outline
+    # Glacier outline (unchanged)
     contour!(ax, x, y, mask_array; levels=[0.5], color=:black, linewidth=1.2)
 
-    # Volume annotations
+    # Volume annotations (unchanged)
     total_vol = round(Int, sum(analysis.stats.volume))
     max_vol = round(Int, analysis.LargestLake.volume)
-
     text!(
         ax, x[1], y[end],
         text = "Total volume: $(total_vol) m³\nLargest water pocket: $(max_vol) m³",
-         fontsize = 10, color = :black
+        fontsize = 10, color = :black
     )
 
-    # Generate nice intermediate ticks between vmin and vmax, e.g. 5 ticks total
-    nticks = 4
-    ticks_vals = range(vmin, vmax, length=nticks)
-    ticks_labels = string.(Int.(round.(ticks_vals)))
-    # colorbar
-    cb = Colorbar(fig[1, 2], hm; ticks=(ticks_vals, ticks_labels), label = "Water pocket depth (m)")
-    cb.height[] = 350
+    # Colorbar only if we drew the heatmap
+    if hm !== nothing
+        cr = hm.attributes.colorrange[]
+        nticks = 4
+        ticks_vals = range(cr[1], cr[2], length=nticks)
+        ticks_labels = string.(Int.(round.(ticks_vals)))
+        cb = Colorbar(fig[1, 2], hm; ticks=(ticks_vals, ticks_labels), label = "Water pocket depth (m)")
+        cb.height[] = 350
+    end
 
-
-
-    # Legends
+    # Legends (unchanged)
     lines!(ax, [NaN], [NaN]; color = :black, linewidth = 0.8, label = "Hydraulic head (10m intervals)")
     lines!(ax, [NaN], [NaN]; color = :red, linewidth = 1.0, label = "Water pocket outlines")
     if area !== nothing
         lines!(ax, [NaN], [NaN]; color = :darkblue, linewidth = 1.0, label = "Upslope area > $(Int(area_threshold)) m²")
     end
-
     Legend(fig, ax; tellwidth = false, tellheight = false, halign = :left, valign = :top, framevisible = false)
 
     save(savepath, fig; px_per_unit = 4)
     println("✅ Saved lake depth plot with outlines and annotations to: $savepath")
     return fig
 end
+
 
 
 function plot_hydraulic_head_and_flux(
@@ -430,7 +434,8 @@ function boxplot_lake_vol_stoch(
     aggr2 = nothing,
     aggr3 = nothing,
     aggr4 = nothing,
-    labels::Vector{String} = ["all unc.", "bed. unc.", "surf. unc.", "flot. unc."],
+    aggr5 = nothing,
+    labels::Vector{String} = ["all unc.", "bed. unc.", "surf. unc.", "flot. unc.", "No unc"],
     savepath::String = "lake_fs_volume_boxplot.png"
 )
     lake_vols = [aggr_main.lake_fs_vol]
@@ -438,6 +443,7 @@ function boxplot_lake_vol_stoch(
     if aggr2 !== nothing push!(lake_vols, aggr2.lake_fs_vol) end
     if aggr3 !== nothing push!(lake_vols, aggr3.lake_fs_vol) end
     if aggr4 !== nothing push!(lake_vols, aggr4.lake_fs_vol) end
+    if aggr5 !== nothing push!(lake_vols, aggr5.lake_fs_vol) end
 
     fig = Figure(size = (100 * length(lake_vols) + 300, 400))
     ax = Axis(fig[1, 1],

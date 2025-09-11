@@ -28,6 +28,7 @@ aggr1 = deserialize(joinpath(output_dir, "aggr1_$(name).jls")) # all uncertainti
 aggr2 = deserialize(joinpath(output_dir, "aggr2_$(name).jls")) # bed only
 aggr3 = deserialize(joinpath(output_dir, "aggr3_$(name).jls")) # surface only
 aggr4 = deserialize(joinpath(output_dir, "aggr4_$(name).jls")) # flotation only
+aggr5 = deserialize(joinpath(output_dir, "aggr5_$(name).jls")) # no uncertainties (deterministic)
 
 # --- Reconstruct rasters from arrays (use thickness grid) ---
 thickness        = clean_raster(Raster(joinpath(datadir_WWFS_input, thickness_file)))
@@ -40,9 +41,9 @@ analysis = analyze_lakes(lake_depth_mean, thickness; min_depth=2.0)
 
 df = DataFrame(
     run = name,
-    smooth_surface_ice_fraction = NaN,  # not used here
+    smooth_surface_ice_fraction = NaN,  # should be taken form the file name?
     min_depth_m = analysis.min_depth,
-    supragl_fill_fraction = NaN,        # not used here
+    supragl_fill_fraction = NaN,        
     n_lakes = nrow(analysis.stats),
     total_volume_m3 = sum(analysis.stats.volume),
     mean_area_m2 = mean(analysis.stats.area_m2),
@@ -63,13 +64,13 @@ plot_lake_depth(
     min_depth = analysis.min_depth,
     show_all_lakes = true,
     area = area_stoch,
-    area_threshold = 1e4,
-    depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp"
+    area_threshold = 1e4
+    #depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp"
 )
 
 # --- Boxplot: contributions (all, surface, bed, flotation) ---
 boxplot_lake_vol_stoch(
-    aggr1; aggr2=aggr2, aggr3=aggr3, aggr4=aggr4,
+    aggr1; aggr2=aggr2, aggr3=aggr3, aggr4=aggr4,aggr5=aggr5,
     savepath = joinpath(output_dir, "lake_volume_comparison_$(name).png")
 )
 

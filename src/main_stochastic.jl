@@ -39,6 +39,7 @@ elseif run_name == "2024_June"
     Dict(
         :surface_raw   => joinpath(datadir_WWFS_input, "surface_2024_june.tif"),
         :surface_smooth=> joinpath(datadir_WWFS_input, "surface_2024_june_smooth_01.tif"),
+        :surface_smooth_filled => "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis/2024_June_smoothed_surface_with_lakefilled.tif",
         :surface_err   => joinpath(datadir_WWFS_input, "surface_2024_june_err_avg_01smooth.tif"),
         :thickness     => joinpath(datadir_WWFS_input, "ice_thickness_2024_june.tif"),
         :bedrock       => joinpath(datadir_WWFS_input, "bedrock_resamp_1m.tif")
@@ -100,7 +101,7 @@ floatfrac_uc = Uncertainty(absuc=0.0, reluc=0.1, correlation_length=corr_length_
 # f = 0.8 to 1.1 in Bowling et al 2015 (greenland)
 source_uc    = Uncertainty()  
 
-# Loop over 4 uncertainty cases
+# Loop over 5 uncertainty cases
 for (i, (surf_uc, bed_uc, float_uc)) in enumerate([
     # aggr1: all uncertainties
     (surfdem_uc, beddem_uc, floatfrac_uc),
@@ -109,7 +110,9 @@ for (i, (surf_uc, bed_uc, float_uc)) in enumerate([
     # aggr3: only surface uncertain
     (surfdem_uc, Uncertainty(absuc=0.0, reluc=0.0), Uncertainty(absuc=0.0, reluc=0.0)),
     # aggr4: only flotation uncertain
-    (Uncertainty(absuc=0.0, reluc=0.0), Uncertainty(absuc=0.0, reluc=0.0), floatfrac_uc)
+    (Uncertainty(absuc=0.0, reluc=0.0), Uncertainty(absuc=0.0, reluc=0.0), floatfrac_uc),
+    # aggr5: no uncertainties (deterministic)
+    (Uncertainty(absuc=0.0, reluc=0.0), Uncertainty(absuc=0.0, reluc=0.0), Uncertainty(absuc=0.0, reluc=0.0))   
 ])
 
     # Extract raster grid

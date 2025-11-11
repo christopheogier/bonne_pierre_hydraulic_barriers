@@ -47,7 +47,7 @@ elseif run_name == "2024_June"
 end
 
 surface         = clean_raster(Raster(paths[:surface_raw]))
-surface_smooth  = clean_raster(Raster(paths[:surface_smooth]))
+surface_smooth  = clean_raster(Raster(paths[:surface_smooth_filled]))
 surface_err     = clean_raster(Raster(paths[:surface_err]))
 thickness       = clean_raster(Raster(paths[:thickness]))
 beddem          = clean_raster(Raster(paths[:bedrock]))
@@ -63,6 +63,7 @@ bed_err_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "bedrock_err_std_
 
 
 # --- Define uncertainty models ---
+N = 20 # number of realization
 #kernel = "gauss"
 cov_fn = WWFS.GRF.gaussian_kernel #or WWFS.GRF.exponential_kernel
 range_bed = 200 #m, see XDEM variograms outputs
@@ -120,10 +121,11 @@ for (i, (surf_uc, bed_uc, float_uc)) in enumerate([
     #println("step(x): ", step(x))
     #println("step(y): ", step(y)) # -1 !
 
-    # Sink definitions
+    # Sink definitions (not used)
     sink_areas = (
     outlet = [CartesianIndices((1:10, 1:length(y)))[:],
-              CartesianIndices((1:10, 1:(length(y)÷2)))[:]])
+              CartesianIndices((1:10, 1:(length(y)÷2)))[:]])  # arbitrary
+    # One could also put the sink at the main subglacial lake for instance.
               
     println("🔄 Running WWFS stochastic for aggr$i on $run_name...")
     model, get_sample, aggregate = WWFS.make_fns(step(x),
@@ -134,8 +136,23 @@ for (i, (surf_uc, bed_uc, float_uc)) in enumerate([
                                                  sink_areas,
                                                  rmask)
 
-    aggr = map_mc(model, get_sample, aggregate, 20)
+    # Store largest lake volume per realization
+   
+    largest_vols = Float64[]
+
+    for _ in 1:N
+        s = get_sample()
+        _, output = model(s...)
+        lakes_free_surf = output[3][2]
+        analysis = analyze_lakes(lakes_free_surf, thickness; min_depth=2.0)
+        push!(largest_vols, analysis.LargestLake.volume)
+    end                                             
+
+    aggr = map_mc(model, get_sample, aggregate, N)
     #(:areas, :areas_extra, :melt_freeze, :lakes_depth, :lakes_mask, :lakes_depth_fs, :lakes_mask_fs, :sc_locs, :kappas, :catchments, :catchment_fluxes, :n_samples)
+
+    # Attach largest-lake volumes (already in m^3 from analyze_lakes)
+    aggr = merge(aggr, (largest_lake_fs_vol = Float32.(largest_vols),))
 
     serialize(joinpath(output_dir, "aggr$(i)_$(run_name).jls"), aggr)
     println("✅ Saved aggr$i to disk for $run_name.")

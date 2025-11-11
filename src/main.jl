@@ -41,9 +41,9 @@ runs = [
 
 # TO CHANGE
 min_depths = 2.#[0.0, 2.0]           # meters
-smooth_coeffs = 0.1#[0.0, 0.1]        # as fraction of thickness
+smooth_coeffs = .1#[0.0, 0.1]        # as fraction of thickness
 #filling_fractions = 0.#[0.0, 0.75]   # fraction of supraglacial filling
-filling_volume = 100000.#[0.,100000.0] # m3, volume to fill the largest supraglacial lake
+filling_volume = 100000.0#[0.,100000.0] # m3, volume to fill the largest supraglacial lake
 
 # Summary
 summaries = DataFrame()
@@ -139,7 +139,6 @@ for min_depth in min_depths
 
                 end
 
-                # important= fix bedrock smoothness
 
                 # Run WWFS
                 ((areas, slen, dir, nout, nin, sinks, pits, c, bnds),
@@ -200,8 +199,8 @@ for min_depth in min_depths
                 # Plotting
 
                 plot_lake_depth(lakes_free_surf,thickness,analysis,
-                    phi,out_prefix * "_lakes+depressions.png";min_depth = analysis.min_depth,show_all_lakes = true, area = areas[1],area_threshold = 1e5,
-                    depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp")
+                    phi,out_prefix * "_lakes_free.png";min_depth = analysis.min_depth,show_all_lakes = true, area = areas[1],area_threshold = 1e5),
+                #depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp")
 
                     #depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp"
 
@@ -209,7 +208,7 @@ for min_depth in min_depths
                 #plot_hydraulic_head(phi, out_prefix * "_phi.png")
 
                 # plot upslope area
-                #plot_hydraulic_head_and_flux(phi,areas[1],thickness,out_prefix * "_phi_flux.png";min_threshold = 1e5,max_threshold = 1e6)
+                plot_hydraulic_head_and_flux(phi,areas[1],thickness,out_prefix * "_phi_flux.png";min_threshold = 1e5,max_threshold = 1e6)
 
                                 
                 # Append to summary

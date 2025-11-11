@@ -9,7 +9,7 @@ using Shapefile
 # --- Your JoG style setup ---
 two_column_cm   = 17.8
 one_column_cm   = 8.6
-font_size_pt    = 10
+font_size_pt    = 12
 label_font_size = 12
 
 pt_in_cm = 28.3465
@@ -32,10 +32,13 @@ makie_theme = merge(theme_latexfonts(),
                                 yticksize=3),
                           Colorbar=(spinewidth=0.5, tickwidth=0.5, ticksize=3, size=7),
                           Label=(fontsize=label_font_size, font=:bold),
-                          Legend=(rowgap=-8, labelsize=8, framewidth=0.25, padding=(2, 2, 2, 2), margin=(4, 4, 4, 4))))
+                          Legend=(rowgap=-8, labelsize=12, framewidth=0.25, padding=(2, 2, 2, 2), margin=(4, 4, 4, 4))))
 
 # Apply the theme globally
+
 #set_theme!(makie_theme)
+set_theme!(Theme(fontsize = 16))   # ← increase this number for bigger text everywhere
+
 
 function get_axes_and_matrix(rt::Raster)
     x, y = collect.(dims(rt))
@@ -76,7 +79,7 @@ function plot_ice_thickness(rt; gpr_points=nothing, savepath=nothing)
     y_max = y[max_idx[2]]
 
     fig = Figure(size=(800, 600))
-    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title="Ice thickness (m)")
+    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)")#, title="Ice thickness (m)")
 
     # Heatmap and contours
     hm = heatmap!(ax, x, y, Z; colormap=Reverse(:ice), colorrange=(0, vmax))
@@ -120,7 +123,7 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
     vmin, vmax = finite_minmax(Z)
 
     fig = Figure(size=(800, 600))
-    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title="Bedrock elevation (m a.s.l.)")
+    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)")#, title="Bedrock elevation (m a.s.l.)")
 
     hm = heatmap!(ax, x, y, Z; colormap=:thermal, colorrange=(vmin, vmax))
     # 20m contour lines
@@ -251,6 +254,11 @@ function plot_lake_depth(
         title = "Water pocket depth (m > $(min_depth))"
     )
 
+    # Overlay outlines (unchanged)
+    if depressions_path !== nothing
+        _overlay_depressions!(ax, depressions_path; linecolor=(:green,0.8), fillcolor=(:green, 0.2), lw=1.0)
+    end
+
     # Plot lake depth heatmap if `lakes` provided
     hm = nothing
     if lakes !== nothing
@@ -292,15 +300,12 @@ function plot_lake_depth(
         area_int = Int.(area_mask)
         contour!(ax, x, y, area_int;
             levels = [0.5],
-            color = (:darkblue,0.5), # 0.5 for tranparency
+            color = (:darkblue,0.6), # 0.5 for tranparency
             linewidth = 1.0
         )
     end
 
-    # Overlay outlines (unchanged)
-    if depressions_path !== nothing
-        _overlay_depressions!(ax, depressions_path; linecolor=(:green,0.7), fillcolor=(:green, 0.3), lw=1.0)
-    end
+    
 
     # Overlay hydraulic head contours (unchanged)
     if phi !== nothing
@@ -312,8 +317,6 @@ function plot_lake_depth(
         contour!(ax, x, y, Z_phi; levels=levels, linewidth=0.8, color=:black)
     end
 
-    # Glacier outline (unchanged)
-    contour!(ax, x, y, mask_array; levels=[0.5], color=:black, linewidth=1.2)
 
     # Volume annotations (unchanged)
     total_vol = round(Int, sum(analysis.stats.volume))
@@ -330,7 +333,7 @@ function plot_lake_depth(
         nticks = 4
         ticks_vals = range(cr[1], cr[2], length=nticks)
         ticks_labels = string.(Int.(round.(ticks_vals)))
-        cb = Colorbar(fig[1, 2], hm; ticks=(ticks_vals, ticks_labels), label = "Water pocket depth (m)")
+        cb = Colorbar(fig[1, 2], hm; ticks=(ticks_vals, ticks_labels), label = "Subglacial water height (m)")
         cb.height[] = 350
     end
 
@@ -341,6 +344,16 @@ function plot_lake_depth(
         lines!(ax, [NaN], [NaN]; color = :darkblue, linewidth = 1.0, label = "Upslope area > $(Int(area_threshold)) m²")
     end
     Legend(fig, ax; tellwidth = false, tellheight = false, halign = :left, valign = :top, framevisible = false)
+
+    
+    # Draw outline last 
+    # --- Always use the June 2024 thickness for glacier outline ---
+    outline_thk = Raster("/scratch-3/cogier/data/BonnePierre_input/WWFS_input/ice_thickness_2024_oct.tif")
+    x_out, y_out, Z_out = get_axes_and_matrix(outline_thk)
+    mask_outline = Int.(Z_out .> 0)
+    contour!(ax, x_out, y_out, mask_outline; levels=[0.5], color=:black, linewidth=1)     
+    # outline to show june missing data in case of June 2024  
+    contour!(ax, x_out, y_out, mask_array; levels=[0.5], color=:black, linewidth=1) 
 
     save(savepath, fig; px_per_unit = 4)
     println("✅ Saved lake depth plot with outlines and annotations to: $savepath")
@@ -455,6 +468,10 @@ function boxplot_lake_vol_stoch(
     x = vcat([fill(i, length(v)) for (i, v) in enumerate(lake_vols)]...)
     y = vcat(lake_vols...)
     boxplot!(ax, x, y)
+
+    # Overlay means as red dots
+    means = [mean(v) for v in lake_vols]
+    scatter!(ax, 1:length(means), means; color = :red, marker = :cross, markersize = 10, label = "mean")
 
     save(savepath, fig)
     println("✅ Saved stochastic lake volume boxplot to: $savepath")

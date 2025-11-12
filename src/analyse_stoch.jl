@@ -27,8 +27,12 @@ thickness_file = Dict(
 aggr1 = deserialize(joinpath(output_dir, "aggr1_$(name).jls")) # all uncertainties
 aggr2 = deserialize(joinpath(output_dir, "aggr2_$(name).jls")) # bed only
 aggr3 = deserialize(joinpath(output_dir, "aggr3_$(name).jls")) # surface only
-aggr4 = deserialize(joinpath(output_dir, "aggr4_$(name).jls")) # flotation only
+aggr4 = deserialize(joinpath(output_dir, "aggr4_$(name).jls")) # flotation only l = 100m
 aggr5 = deserialize(joinpath(output_dir, "aggr5_$(name).jls")) # no uncertainties (deterministic)
+aggr6 = deserialize(joinpath(output_dir, "aggr6_$(name).jls")) # flotation only, l = 10m
+aggr7 = deserialize(joinpath(output_dir, "aggr7_$(name).jls")) # flotation only, l = 50m
+aggr8 = deserialize(joinpath(output_dir, "aggr8_$(name).jls")) # flotation only, l = 1000m
+
 
 # --- Reconstruct rasters from arrays (use thickness grid) ---
 thickness        = clean_raster(Raster(joinpath(datadir_WWFS_input, thickness_file)))
@@ -75,127 +79,89 @@ plot_lake_depth(
     #depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp"
 )
 
-# --- Boxplot: total vs largest lake volumes across uncertainties ---
 
-# ------- Left panel: total vs largest per uncertainty -------
-labels = ["No unc", "all unc.", "bed. unc.", "surf. unc.", "f. unc."]
+# --- Boxplot: total lake volume and largest-lake volume across aggr1 to aggr5 ---
+
+labels = ["all unc.", "bed. unc.", "surf. unc.", "f. unc.", "No unc"]
 
 lake_vols = [
-    aggr5.lake_fs_vol,
     aggr1.lake_fs_vol,
     aggr2.lake_fs_vol,
     aggr3.lake_fs_vol,
     aggr4.lake_fs_vol,
-    
+    aggr5.lake_fs_vol,
 ]
 
 largest_lake_vols = [
-    aggr5.largest_lake_fs_vol,
     aggr1.largest_lake_fs_vol,
     aggr2.largest_lake_fs_vol,
     aggr3.largest_lake_fs_vol,
-    aggr4.largest_lake_fs_vol
+    aggr4.largest_lake_fs_vol,
+    aggr5.largest_lake_fs_vol,
 ]
 
-# ------- Right panel: flotation-only, TOTAL volume with different L -------
-flot_dir = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis_flot"
-aggr_f50  = deserialize(joinpath(flot_dir, "aggr_flot_L50_2024_June.jls"))
-aggr_f100 = deserialize(joinpath(flot_dir, "aggr_flot_L100_2024_June.jls"))
-aggr_f500 = deserialize(joinpath(flot_dir, "aggr_flot_L500_2024_June.jls"))
-
-Ls_labels = ["L=50 m", "L=100 m", "L=500 m"]
-Ls_vols   = [aggr_f50.lake_fs_vol,   # <-- TOTAL volume 
-             aggr_f100.lake_fs_vol,
-             aggr_f500.lake_fs_vol]
-
-# ------- Figure -------
-fig = Figure(size = (950, 420))
-
-# Left subplot
-axL = Axis(fig[1, 1];
+fig = Figure(size = (700, 420))
+ax  = Axis(fig[1, 1];
     ylabel = "Water-pocket volume (m³)",
     xticks = (1:length(labels), labels)
 )
 
-n        = length(labels)
-centers  = 1:n
-offset   = 0.12
-w        = 0.22
+n       = length(labels)
+centers = 1:n
+offset  = 0.12
+w       = 0.22
 
-pos_tot  = centers .- offset
-pos_lrg  = centers .+ offset
+pos_tot = centers .- offset
+pos_lrg = centers .+ offset
 
 x_tot = vcat([fill(pos_tot[i], length(v)) for (i,v) in enumerate(lake_vols)]...)
 y_tot = vcat(lake_vols...)
 x_lrg = vcat([fill(pos_lrg[i], length(v)) for (i,v) in enumerate(largest_lake_vols)]...)
 y_lrg = vcat(largest_lake_vols...)
 
-boxplot!(axL, x_tot, y_tot; color=:dodgerblue, width=w)
-boxplot!(axL, x_lrg, y_lrg; color=:orange,     width=w)
+boxplot!(ax, x_tot, y_tot; color=:dodgerblue, width=w)
+boxplot!(ax, x_lrg, y_lrg; color=:orange,     width=w)
 
-scatter!(axL, pos_tot, [mean(v) for v in lake_vols];
+scatter!(ax, pos_tot, [mean(v) for v in lake_vols];
          color=:black, marker=:cross, markersize=9)
-scatter!(axL, pos_lrg, [mean(v) for v in largest_lake_vols];
+scatter!(ax, pos_lrg, [mean(v) for v in largest_lake_vols];
          color=:black, marker=:cross, markersize=9)
 
-lines!(axL, [NaN], [NaN]; color=:dodgerblue, label="Total pockets volume")
-lines!(axL, [NaN], [NaN]; color=:orange,     label="Largest pocket volume")
-Legend(fig[2, 1], axL; framevisible=false)
+lines!(ax, [NaN], [NaN]; color=:dodgerblue, label="Total pockets volume")
+lines!(ax, [NaN], [NaN]; color=:orange,     label="Largest pocket volume")
+Legend(fig[2, 1], ax; framevisible=false)
 
-# Right subplot (TOTAL volume, flotation correlation length)
-axR = Axis(fig[1, 2];
+save(joinpath(output_dir, "boxplot_total_vs_largest_$(name).png"), fig)
+println("✅ Saved: ", joinpath(output_dir, "boxplot_total_vs_largest_$(name).png"))
+
+
+# --- Boxplot: flotation uncertainty correlation lengths ---
+
+Ls_labels = ["L=10 m", "L=50 m", "L=100 m", "L=1000 m"]
+
+# Use the total-volume vectors (NOT the whole aggr structs).
+# aggr6 → L=10 m, aggr7 → L=50 m, aggr4 → L=100 m, aggr8 → L=1000 m
+Ls_vols = [
+    aggr6.lake_fs_vol,
+    aggr7.lake_fs_vol,
+    aggr4.lake_fs_vol,
+    aggr8.lake_fs_vol,
+]
+
+fig2 = Figure(size = (520, 420))
+ax2  = Axis(fig2[1, 1];
     title = "Flotation uncertainty — correlation length",
     ylabel = "Total water-pocket volume (m³)",
-    xticks = (1:3, Ls_labels)
+    xticks = (1:4, Ls_labels)
 )
 
-cols_R = [:steelblue, :dodgerblue, :royalblue]  # keep L=100 as dodgerblue
-
+# Tight spacing: contiguous positions, relatively wide boxes, minimal x padding
 for (i, v) in enumerate(Ls_vols)
     xi = fill(i, length(v))
-    boxplot!(axR, xi, v; color=cols_R[i], width=0.35)
-    scatter!(axR, [i], [mean(v)]; color=:black, marker=:cross, markersize=9)
+    boxplot!(ax2, xi, v; color=:steelblue, width=0.65)
+    scatter!(ax2, [i], [mean(v)]; color=:black, marker=:cross, markersize=9)
 end
+xlims!(ax2, 0.5, 4.5)
 
-lines!(axR, [NaN], [NaN]; color=:steelblue,  label="L = 50 m")
-lines!(axR, [NaN], [NaN]; color=:dodgerblue, label="L = 100 m")
-lines!(axR, [NaN], [NaN]; color=:royalblue,  label="L = 500 m")
-Legend(fig[2, 2], axR; framevisible=false)
-
-save(joinpath(output_dir, "lake_volume_total_vs_largest_plus_flotL_total_$(name).png"), fig)
-println("✅ Saved figure: ",
-        joinpath(output_dir, "lake_volume_total_vs_largest_plus_flotL_total_$(name).png"))
-
-
-# --- Boxplot: contributions (all, surface, bed, flotation) ---
-#boxplot_lake_vol_stoch(
-    #aggr1; aggr2=aggr2, aggr3=aggr3, aggr4=aggr4,aggr5=aggr5,
-    #savepath = joinpath(output_dir, "lake_volume_comparison_$(name).png")
-#)
-
-# --- Quick plot: boxplot of largest-lake volumes across realizations ---
-
-#vols = aggr1.largest_lake_fs_vol
-#fig = Figure(size=(400, 500))
-#ax  = Axis(fig[1,1];
-    #title = "Largest water pocket volume — $(name)",
-    #ylabel = "Volume (m³)",
-    #xticks = ([1], ["Largest lake"])   # <- vector, not scalar
-#)
-
-#boxplot!(ax, fill(1, length(vols)), vols; color=:lightblue)
-#scatter!(ax, [1], [mean(vols)]; color=:red, marker=:cross, markersize=14, label="Mean")
-
-#save(joinpath(output_dir, "largest_lake_volume_boxplot_$(name).png"), fig; px_per_unit=3)
-#println("✅ Saved boxplot to ", joinpath(output_dir, "largest_lake_volume_boxplot_$(name).png"))
-
-# --- Boxplot: flotation correlation-length sensitivity (optional, filenames fixed) ---
-#aggr_f10   = deserialize(joinpath(output_dir, "aggr_flot_L10.jls"))
-#aggr_f100  = deserialize(joinpath(output_dir, "aggr_flot_L100.jls"))
-#aggr_f1000 = deserialize(joinpath(output_dir, "aggr_flot_L1000.jls"))
-
-#boxplot_lake_vol_stoch(
-    #aggr_f10; aggr2=aggr_f100, aggr3=aggr_f1000,
-    #labels = ["L=10m", "L=100m", "L=1000m"],
-    #savepath = joinpath(output_dir, "boxplot_lake_vol_flotation_$(name).png")
-#)
+save(joinpath(output_dir, "boxplot_flotation_totals_Ls_$(name).png"), fig2)
+println("✅ Saved: ", joinpath(output_dir, "boxplot_flotation_totals_Ls_$(name).png"))

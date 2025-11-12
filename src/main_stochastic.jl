@@ -102,64 +102,80 @@ floatfrac_uc = Uncertainty(absuc=0.0, reluc=0.1, correlation_length=corr_length_
 # f = 0.8 to 1.1 in Bowling et al 2015 (greenland)
 source_uc    = Uncertainty()  
 
-# Loop over 5 uncertainty cases
-for (i, (surf_uc, bed_uc, float_uc)) in enumerate([
+# --- Helper for quickly defining flotation-uncertainty with a given corr. length ---
+float_uc(L) = Uncertainty(absuc=0.0, reluc=0.1, correlation_length=L, covariance_fn=cov_fn)
+zero_uc()   = Uncertainty(absuc=0.0, reluc=0.0)
+
+# Keep your existing definitions:
+#   surfdem_uc   = Uncertainty(absuc=surface_err, reluc=0.0, correlation_length=corr_length_surf, covariance_fn=cov_fn)
+#   beddem_uc    = Uncertainty(absuc=bed_err_std,  reluc=0.0, correlation_length=corr_length_bed,  covariance_fn=cov_fn)
+#   floatfrac_uc = Uncertainty(absuc=0.0, reluc=0.1, correlation_length=corr_length_f, covariance_fn=cov_fn)  # L = 100 m (your aggr4)
+#   source_uc    = Uncertainty()
+
+# --- Define all cases (indexed order controls aggr#) ---
+cases = [
     # aggr1: all uncertainties
-    (surfdem_uc, beddem_uc, floatfrac_uc),
+    (surfdem_uc, beddem_uc, floatfrac_uc),      # floatfrac_uc here is your L=100 m
     # aggr2: only bedrock uncertain
-    (Uncertainty(absuc=0.0, reluc=0.0), beddem_uc, Uncertainty(absuc=0.0, reluc=0.0)),
+    (zero_uc(),  beddem_uc,  zero_uc()),
     # aggr3: only surface uncertain
-    (surfdem_uc, Uncertainty(absuc=0.0, reluc=0.0), Uncertainty(absuc=0.0, reluc=0.0)),
-    # aggr4: only flotation uncertain
-    (Uncertainty(absuc=0.0, reluc=0.0), Uncertainty(absuc=0.0, reluc=0.0), floatfrac_uc),
+    (surfdem_uc, zero_uc(),  zero_uc()),
+    # aggr4: only flotation uncertain (L = 100 m, as defined above)
+    (zero_uc(),  zero_uc(),  floatfrac_uc),
     # aggr5: no uncertainties (deterministic)
-    (Uncertainty(absuc=0.0, reluc=0.0), Uncertainty(absuc=0.0, reluc=0.0), Uncertainty(absuc=0.0, reluc=0.0))   
-])
+    (zero_uc(),  zero_uc(),  zero_uc()),
+    # aggr6: only flotation uncertain (L = 10 m)
+    (zero_uc(),  zero_uc(),  float_uc(10.0)),
+    # aggr7: only flotation uncertain (L = 50 m)
+    (zero_uc(),  zero_uc(),  float_uc(50.0)),
+    # aggr8: only flotation uncertain (L = 1000 m)
+    (zero_uc(),  zero_uc(),  float_uc(1000.0))
+]
+
+# --- Run all cases and save as aggr1..aggr8 ---
+for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
 
     # Extract raster grid
-    x, y = dims(surface)
-    #println("step(x): ", step(x))
-    #println("step(y): ", step(y)) # -1 !
+    xdim, ydim = dims(surface)
+    dx = step(xdim)
 
-    # Sink definitions (not used)
+    # Sinks (keep as you had them)
     sink_areas = (
-    outlet = [CartesianIndices((1:10, 1:length(y)))[:],
-              CartesianIndices((1:10, 1:(length(y)÷2)))[:]])  # arbitrary
-    # One could also put the sink at the main subglacial lake for instance.
-              
-    println("🔄 Running WWFS stochastic for aggr$i on $run_name...")
-    model, get_sample, aggregate = WWFS.make_fns(step(x),
-                                                 surfdem, surf_uc,
-                                                 beddem, bed_uc,
-                                                 floatfrac, float_uc,
-                                                 source, source_uc,
-                                                 sink_areas,
-                                                 rmask)
+        outlet = [CartesianIndices((1:10, 1:length(ydim)))[:],
+                  CartesianIndices((1:10, 1:(length(ydim)÷2)))[:]]
+    )
 
-    # Store largest lake volume per realization
-   
+    println("🔄 Running WWFS stochastic for aggr$(i) on $run_name...")
+    model, get_sample, aggregate = WWFS.make_fns(
+        dx,
+        surfdem,  surf_uc,
+        beddem,   bed_uc,
+        floatfrac, float_uc_i,
+        source,   source_uc,
+        sink_areas,
+        rmask
+    )
+
+    # Largest-lake volume per realization
     largest_vols = Float64[]
-
     for _ in 1:N
         s = get_sample()
         _, output = model(s...)
         lakes_free_surf = output[3][2]
         analysis = analyze_lakes(lakes_free_surf, thickness; min_depth=2.0)
         push!(largest_vols, analysis.LargestLake.volume)
-    end                                             
+    end
 
+    # Aggregate maps/statistics over N runs
     aggr = map_mc(model, get_sample, aggregate, N)
-    #(:areas, :areas_extra, :melt_freeze, :lakes_depth, :lakes_mask, :lakes_depth_fs, :lakes_mask_fs, :sc_locs, :kappas, :catchments, :catchment_fluxes, :n_samples)
 
-    # Attach largest-lake volumes (already in m^3 from analyze_lakes)
+    # Attach largest-lake ensemble (m^3 from analyze_lakes)
     aggr = merge(aggr, (largest_lake_fs_vol = Float32.(largest_vols),))
 
-    serialize(joinpath(output_dir, "aggr$(i)_$(run_name).jls"), aggr)
-    println("✅ Saved aggr$i to disk for $run_name.")
-
-    # save TIF results
-    #write(joinpath(output_dir, "lake_depth_stoch_mean.tif"), Raster(aggr.lakes_depth_fs, dims(surface)), force=true)
-    #write(joinpath(output_dir, "area_mean.tif"), Raster(aggr.areas, dims(surface))  , force=true)
+    # Save with index-matched file name
+    outfile = joinpath(output_dir, "aggr$(i)_$(run_name).jls")
+    serialize(outfile, aggr)
+    println("✅ Saved $(outfile)")
 end
 
 

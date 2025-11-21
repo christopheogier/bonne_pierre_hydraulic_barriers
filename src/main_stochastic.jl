@@ -46,8 +46,8 @@ elseif run_name == "2024_June"
     )
 end
 
-surface         = clean_raster(Raster(paths[:surface_raw]))
-surface_smooth  = clean_raster(Raster(paths[:surface_smooth_filled]))
+surface_raw         = clean_raster(Raster(paths[:surface_raw]))
+surface_smooth  = clean_raster(Raster(paths[:surface_smooth])) # change to :surface_smooth_filled if needed
 surface_err     = clean_raster(Raster(paths[:surface_err]))
 thickness       = clean_raster(Raster(paths[:thickness]))
 beddem          = clean_raster(Raster(paths[:bedrock]))
@@ -57,13 +57,32 @@ beddem          = clean_raster(Raster(paths[:bedrock]))
 bed_err_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "bedrock_err_std_1m.tif")))
 # import lus and minus sigma if we can force WWF within two assymetric bound?
 
+# --- Transect A→B for profile spaghetti (same as in plot_profiles) ---
+surface_raw = clean_raster(Raster(paths[:surface_raw]))
+
+A = (962632.47, 6431521.78)  # upstream
+B = (962420.11, 6431549.94)  # downstream
+dx_profile = 2.0             # sampling step (m)
+
+x1, y1 = B
+x2, y2 = A
+L = hypot(x2 - x1, y2 - y1)
+n_profile = max(1, floor(Int, L/dx_profile)) + 1
+ts_profile = range(0.0, 1.0; length = n_profile)
+
+pts_profile  = [(x1 + t*(x2 - x1), y1 + t*(y2 - y1)) for t in ts_profile]
+dist_profile = collect(range(0.0, L; length = n_profile))
+
+# Static bedrock & surface profiles (same for all cases and runs)
+z_bed_profile  = _profile_vals(beddem,      pts_profile)
+z_surf_profile = _profile_vals(surface_raw, pts_profile)
 
 
 ################################ WWFS stochastic ########################################
 
 
 # --- Define uncertainty models ---
-N = 20 # number of realization
+N = 1000 # number of realization
 #kernel = "gauss"
 cov_fn = WWFS.GRF.gaussian_kernel #or WWFS.GRF.exponential_kernel
 range_bed = 200 #m, see XDEM variograms outputs
@@ -135,15 +154,20 @@ cases = [
 # --- Run all cases and save as aggr1..aggr8 ---
 for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
 
+
     # Extract raster grid
-    xdim, ydim = dims(surface)
+    xdim, ydim = dims(surfdem)
     dx = step(xdim)
 
-    # Sinks (keep as you had them)
-    sink_areas = (
-        outlet = [CartesianIndices((1:10, 1:length(ydim)))[:],
-                  CartesianIndices((1:10, 1:(length(ydim)÷2)))[:]]
-    )
+    # --- SINKS : Define special catchment point  ---
+    x0,y0 = 962468.722,6431539.971
+    i0, j0 = coord_to_index(surface_smooth, x0, y0)
+    println("Pixel index: ", (i0, j0))
+
+    sink_areas = (point = [CartesianIndex(i0, j0)])  # single-pixel sink
+    #sink_areas = (outlet = [CartesianIndices((1:10, 1:length(ydim)))[:],CartesianIndices((1:10, 1:(length(ydim)÷2)))[:]])
+    
+
 
     println("🔄 Running WWFS stochastic for aggr$(i) on $run_name...")
     model, get_sample, aggregate = WWFS.make_fns(
@@ -155,27 +179,52 @@ for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
         sink_areas,
         rmask
     )
-
+    
     # Largest-lake volume per realization
     largest_vols = Float64[]
+    #  Per-realization transect profiles (for all cases)  # this is to check the mean versus stochastic ensembles 
+    phi_profiles  = Vector{Vector{Float32}}()
+    lake_profiles = Vector{Vector{Float32}}()
+
     for _ in 1:N
         s = get_sample()
         _, output = model(s...)
         lakes_free_surf = output[3][2]
+        phi             = output[2][4]   # (sc_locs, kappas, diro, phi)
+
+        # 1) largest lake volume
         analysis = analyze_lakes(lakes_free_surf, thickness; min_depth=2.0)
         push!(largest_vols, analysis.LargestLake.volume)
+
+        # 2) profiles along A→B
+        phi_r  = Raster(phi,             dims(thickness))
+        lake_r = Raster(lakes_free_surf, dims(thickness))
+
+        push!(phi_profiles,  Float32.(_profile_vals(phi_r,  pts_profile)))
+        push!(lake_profiles, Float32.(_profile_vals(lake_r, pts_profile)))
     end
+
 
     # Aggregate maps/statistics over N runs
     aggr = map_mc(model, get_sample, aggregate, N)
 
-    # Attach largest-lake ensemble (m^3 from analyze_lakes)
-    aggr = merge(aggr, (largest_lake_fs_vol = Float32.(largest_vols),))
+    # Attach largest-lake ensemble + transect spaghetti + static profiles
+    aggr = merge(aggr, (
+        largest_lake_fs_vol = Float32.(largest_vols),
+        phi_profiles        = phi_profiles,              # Vector{Vector{Float32}}
+        lake_profiles       = lake_profiles,             # Vector{Vector{Float32}}
+        dist_profile        = Float32.(dist_profile),    # 1D distance along A→B
+        z_bed_profile       = Float32.(z_bed_profile),
+        z_surf_profile      = Float32.(z_surf_profile),
+    ))
 
     # Save with index-matched file name
-    outfile = joinpath(output_dir, "aggr$(i)_$(run_name).jls")
+    outfile = joinpath(output_dir, "aggr$(i)_n$(N)_$(run_name).jls")
     serialize(outfile, aggr)
     println("✅ Saved $(outfile)")
+
+   
+
 end
 
 

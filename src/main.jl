@@ -40,10 +40,9 @@ runs = [
 ]
 
 # TO CHANGE
-min_depths = 2.#[0.0, 2.0]           # meters
+min_depths = 0.#[0.0, 2.0]           # meters
 smooth_coeffs = .1#[0.0, 0.1]        # as fraction of thickness
-#filling_fractions = 0.#[0.0, 0.75]   # fraction of supraglacial filling
-filling_volume = 100000.0#[0.,100000.0] # m3, volume to fill the largest supraglacial lake
+filling_volume = 0.#100000.0#[0.,100000.0] # m3, volume to fill the largest supraglacial lake
 
 # Summary
 summaries = DataFrame()
@@ -174,6 +173,7 @@ for min_depth in min_depths
                     surface_fill   = surface_fill,
                 )
 
+
                 write(out_prefix * "_lakes_free.tif", lakes_free_surf; force=true)
                 write(out_prefix * "_phi.tif", phi; force=true)
                 write(out_prefix * "_area.tif", areas[1]; force=true)
@@ -182,25 +182,36 @@ for min_depth in min_depths
                 # Analyze lakes
                 println("  Analyzing lake_free_surface...")
                 analysis = analyze_lakes(lakes_free_surf, thickness; min_depth=min_depth)
+                #analysis_2 = analyze_lakes(lakes, thickness; min_depth=min_depth)
+
+                # Find lakes with volume > 1000 m³
+                vol_thresh = 1000.0
+                big_inds   = findall(v -> v > vol_thresh, analysis.stats.volume)  # indices = labels
+                n_big      = length(big_inds)
+
+                # Optionally collect their masks (outlines) from analysis.lake_masks
+                big_masks = [analysis.lake_masks[label] for label in big_inds]
 
                 df = DataFrame(
-                    run = run.name,
+                    run                       = run.name,
                     smooth_surface_ice_fraction = smooth_coeff,
-                    min_depth_m = analysis.min_depth,
-                    supragl_fill_volume_m3 = fill_vol,
-                    n_lakes = nrow(analysis.stats),
-                    total_volume_m3 = sum(analysis.stats.volume),
-                    mean_area_m2 = mean(analysis.stats.area_m2),
-                    mean_depth_m = mean(collect(lakes_free_surf)[analysis.labels .> 0]),
-                    max_depth_m = maximum(collect(lakes_free_surf)[analysis.labels .> 0]),
-                    largest_single_volume_m3 = analysis.LargestLake.volume
+                    min_depth_m               = analysis.min_depth,
+                    supragl_fill_volume_m3    = fill_vol,
+                    n_lakes                   = nrow(analysis.stats),
+                    total_volume_m3           = sum(analysis.stats.volume),
+                    mean_area_m2              = mean(analysis.stats.area_m2),
+                    mean_depth_m              = mean(collect(lakes_free_surf)[analysis.labels .> 0]),
+                    max_depth_m               = maximum(collect(lakes_free_surf)[analysis.labels .> 0]),
+                    largest_single_volume_m3  = analysis.LargestLake.volume,
+                    n_lakes_vol_gt_1000_m3    = n_big
                 )
+
 
                 # Plotting
 
                 plot_lake_depth(lakes_free_surf,thickness,analysis,
-                    phi,out_prefix * "_lakes_free.png";min_depth = analysis.min_depth,show_all_lakes = true, area = areas[1],area_threshold = 1e5),
-                #depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp")
+                    phi,out_prefix * "_lakes_free.png";min_depth = analysis.min_depth,show_all_lakes = true, area = areas[1],area_threshold = 1e5,
+                depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp",stochastic=false)
 
                     #depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp"
 
@@ -223,7 +234,7 @@ for min_depth in min_depths
 end
 
 # Save summary
-CSV.write(joinpath(output_dir, "WWFS_lake_summary.csv"), summaries)
+CSV.write(joinpath(output_dir, "WWFS_lake_fs_summary.csv"), summaries)
 println("\n✅ All runs complete. Summary saved to: ", output_dir)
 
 

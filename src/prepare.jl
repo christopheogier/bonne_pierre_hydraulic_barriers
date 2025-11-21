@@ -143,8 +143,6 @@ mask = [!ismissing(v[raster_name]) && v[raster_name] > 0 for v in vals]
 # Step 5: Filter GPR points
 gpr_points = gpr_points[mask, :]
 
-
-
 # plotting
 
 # Plot all four ice thickness maps

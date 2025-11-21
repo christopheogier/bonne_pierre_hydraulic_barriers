@@ -178,3 +178,45 @@ function surface_uncertainty_from_smoothing(surface, bed, smooth_coeff,mask) # h
 
     return (smooth = surface_smooth, std = std, avg = avg) 
 end
+
+"""
+    coord_to_index(raster, x, y)
+
+Return pixel indices (i, j) of the raster cell closest to coordinate (x, y).
+
+Works for rasters whose x/y axes are ascending or descending.
+
+Throws an error if (x,y) lies outside the raster extent.
+"""
+function coord_to_index(raster, x, y)
+    xd, yd = dims(raster)
+    xs = collect(xd)
+    ys = collect(yd)
+
+    # helper: get index for ascending or descending axis
+    function find_idx(axis, val)
+        if axis[1] <= axis[end]
+            # ascending
+            return searchsortedfirst(axis, val)
+        else
+            # descending
+            k = searchsortedfirst(reverse(axis), val)
+            return length(axis) - k + 1
+        end
+    end
+
+    i = find_idx(xs, x)
+    j = find_idx(ys, y)
+
+    # bounds checks
+    if !(1 ≤ i ≤ length(xs))
+        error("x=$x outside raster x-range $(extrema(xs))")
+    end
+    if !(1 ≤ j ≤ length(ys))
+        error("y=$y outside raster y-range $(extrema(ys))")
+    end
+
+    return i, j
+end
+
+

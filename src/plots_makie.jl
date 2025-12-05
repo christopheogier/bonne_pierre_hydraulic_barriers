@@ -160,52 +160,112 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
     return fig
 end
 
-function plot_uncertainty_bed(r1::Raster, r2::Raster, title::String, subtitle1::String, subtitle2::String, savepath::String)
-    x, y, Z1 = get_axes_and_matrix(r1)
-    _, _, Z2 = get_axes_and_matrix(r2)
+function plot_uncertainty_bed(
+    r1::Raster;
+    r2::Union{Raster,Nothing}=nothing,
+    title::String = "",
+    subtitle1::String = "",
+    subtitle2::String = "",
+    savepath::String
+)
 
-    finite_vals = vcat(Z1[isfinite.(Z1)], Z2[isfinite.(Z2)])
-    if isempty(finite_vals)
-        @warn "No valid values to plot for $savepath"
+    # Extract axes + matrices
+    x, y, Z1 = get_axes_and_matrix(r1)
+    finite_vals1 = Z1[isfinite.(Z1)]
+
+    if isempty(finite_vals1)
+        @warn "No valid values for r1."
         return nothing
     end
 
-    # Define actual data bounds and symmetric color range for white at 0
+    # ============ CASE 1: Only ONE raster (single panel) ============
+    if isnothing(r2)
+        vmin = 0
+        vmax = maximum(finite_vals1)
+        vmax = ceil(vmax)  # nicer upper bound
+
+        cmap = cgrad(:reds)  # red-toned colormap
+        ticks_vals = collect(range(vmin, vmax; length=5))
+        ticks_labels = string.(Int.(round.(ticks_vals)))
+
+        fig = Figure(size=(800, 600))
+        ax = Axis(fig[1, 1];
+            aspect = DataAspect(),
+            xlabel = "X (m)",
+            ylabel = "Y (m)",
+            title = subtitle1
+        )
+
+        hm = heatmap!(ax, x, y, Z1;
+            colormap = cmap,
+            colorrange = (vmin, vmax)
+        )
+
+        Colorbar(fig[1, 2], hm;
+            label = "Standard deviation (m)",
+            height = 350,
+            ticks = (ticks_vals, ticks_labels)
+        )
+
+        if title != ""
+            Label(fig[0, :], title; fontsize=12, font=:bold)
+        end
+
+        save(savepath, fig; px_per_unit=4)
+        println("✅ Saved single uncertainty plot to: $savepath")
+
+        return fig
+    end
+
+    # ============ CASE 2: TWO rasters (your original logic) ============
+    _, _, Z2 = get_axes_and_matrix(r2)
+    finite_vals = vcat(finite_vals1, Z2[isfinite.(Z2)])
+
     vmin_data = minimum(finite_vals)
     vmax_data = maximum(finite_vals)
     vmax_abs = ceil(max(abs(vmin_data), abs(vmax_data)))
     colorrange = (-vmax_abs, vmax_abs)
     cmap = cgrad(:balance, scale=colorrange)
 
-    # Define ticks (integers, always including 0, and both extrema)
     nticks = 5
     ticks_vals = collect(round.(range(vmin_data, vmax_data; length=nticks)))
     if 0 ∉ ticks_vals
-        push!(ticks_vals, 0)
-        sort!(ticks_vals)
+        push!(ticks_vals, 0); sort!(ticks_vals)
     end
     ticks_labels = string.(Int.(ticks_vals))
 
-    # Begin plotting
-    fig = Figure(size=(900, 450), fontsize=10)
+    fig = Figure(size=(900, 450))
 
-    ax1 = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title=subtitle1)
-    hm1 = heatmap!(ax1, x, y, Z1; colormap=cmap, colorrange=colorrange)
+    ax1 = Axis(fig[1, 1];
+        aspect=DataAspect(),
+        xlabel="X (m)",
+        ylabel="Y (m)",
+        title=subtitle1
+    )
+    hm1 = heatmap!(ax1, x, y, Z1;
+        colormap=cmap, colorrange=colorrange
+    )
 
-    ax2 = Axis(fig[1, 2]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)", title=subtitle2)
-    heatmap!(ax2, x, y, Z2; colormap=cmap, colorrange=colorrange)
+    ax2 = Axis(fig[1, 2];
+        aspect=DataAspect(),
+        xlabel="X (m)",
+        ylabel="Y (m)",
+        title=subtitle2
+    )
+    heatmap!(ax2, x, y, Z2;
+        colormap=cmap, colorrange=colorrange
+    )
 
-    # Colorbar with clean integer ticks, 0 centered
     Colorbar(fig[1, 3], hm1;
-        label = "Uncertainty (m)",
-        height = 300,
-        ticks = (ticks_vals, ticks_labels)
+        label="Uncertainty (m)",
+        height=300,
+        ticks=(ticks_vals, ticks_labels)
     )
 
     Label(fig[0, :], title; fontsize=12, font=:bold)
 
     save(savepath, fig; px_per_unit=4)
-    println("✅ Saved uncertainty plot to: $savepath")
+    println("✅ Saved TWO-raster uncertainty plot to: $savepath")
 
     return fig
 end
@@ -554,49 +614,6 @@ function plot_hydraulic_head_and_flux(
     return fig
 end
 
-function boxplot_lake_vol_stoch(
-    aggr_main;
-    aggr2 = nothing,
-    aggr3 = nothing,
-    aggr4 = nothing,
-    aggr5 = nothing,
-    labels::Vector{String} = ["all unc.", "bed. unc.", "surf. unc.", "flot. unc.", "No unc"],
-    savepath::String = "lake_fs_volume_boxplot.png"
-)
-    lake_vols = [aggr_main.lake_fs_vol]
-
-    if aggr2 !== nothing push!(lake_vols, aggr2.lake_fs_vol) end
-    if aggr3 !== nothing push!(lake_vols, aggr3.lake_fs_vol) end
-    if aggr4 !== nothing push!(lake_vols, aggr4.lake_fs_vol) end
-    if aggr5 !== nothing push!(lake_vols, aggr5.lake_fs_vol) end
-
-    fig = Figure(size = (100 * length(lake_vols) + 300, 400))
-    ax = Axis(fig[1, 1],
-        title = "Total lake (>2m) volume distribution (Monte Carlo)",
-        ylabel = "Volume (m³)",
-        xticks = (1:length(labels), labels)
-    )
-
-    x = vcat([fill(i, length(v)) for (i, v) in enumerate(lake_vols)]...)
-    y = vcat(lake_vols...)
-    boxplot!(ax, x, y)
-
-    # Overlay means as red dots
-    means = [mean(v) for v in lake_vols]
-    scatter!(ax, 1:length(means), means; color = :red, marker = :cross, markersize = 10, label = "mean")
-
-    save(savepath, fig)
-    println("✅ Saved stochastic lake volume boxplot to: $savepath")
-    return fig
-end
-
-# Helper: turn extract(...) output into (distance, values) vectors
-_profile_vals(r::Raster, pts) = begin
-    rows = extract(r, pts; geometry=false, skipmissing=false)
-    vraw = getproperty.(rows, name(r))              # Vector{Union{Missing, T}}
-    vals = Float64.(coalesce.(vraw, NaN))           # keep length, convert missings to NaN
-    return vals
-end
 
 
 """
@@ -906,55 +923,94 @@ function plot_transect_spaghetti(
     return fig
 end
 
-function plot_point_catchment_prob(
-    catch_prob_raster::Raster,
-    x0::Real, y0::Real;
-    thickness::Union{Raster,Nothing} = nothing,
-    savepath::Union{String,Nothing} = nothing
+"""
+    plot_lake_volume_boxplot(
+        lake_vols, largest_lake_vols, labels, savepath;
+        plot_largest=true
+    )
+
+Plots a boxplot for stochastic lake volumes.
+
+Arguments
+---------
+- `lake_vols` :: Vector of vectors  
+      Each element contains the N realizations of total lake volume for one case.
+- `largest_lake_vols` :: Vector of vectors  
+      Same but for largest-lake volume.
+- `labels` :: Vector of String  
+      Labels below each category.
+- `savepath` :: String  
+      Where to save the figure.
+
+Keyword
+-------
+- `plot_largest=true`  
+      If `false`, only total lake volume is plotted.
+"""
+
+function plot_lake_volume_boxplot(
+    lake_vols::Vector{<:Vector},
+    largest_lake_vols::Vector{<:Vector},
+    labels::Vector{String},
+    savepath::String;
+    plot_largest::Bool = true,
+    logscale::Bool = false
 )
-    # Re-use your helper
-    x, y, Z = get_axes_and_matrix(catch_prob_raster)
 
-    # Optionally mask outside glacier
-    if thickness !== nothing
-        glacier_mask = thickness .> 0
-        Z[.!collect(Bool.(glacier_mask))] .= NaN
-    end
+    n = length(labels)
+    centers = 1:n
 
-    # Color range: focus on non-zero probabilities
-    finite_vals = Z[isfinite.(Z) .& (Z .> 0)]
-    if isempty(finite_vals)
-        @warn "No nonzero probabilities in catchment raster – nothing to plot."
-    end
-    vmax = isempty(finite_vals) ? 1.0 : maximum(finite_vals)
+    fig = Figure(size = (420, 420))
 
-    fig = Figure(size = (800, 600))
-    ax  = Axis(fig[1, 1];
-        aspect = DataAspect(),
-        xlabel = "X (m)",
-        ylabel = "Y (m)",
-        title  = "Point catchment probability"
+    ax = Axis(fig[1, 1];
+        ylabel = "Total water pockets volume (m³)",
+        xlabel = "Field perturbed",
+        xticks  = (centers, labels),
+        yscale  = logscale ? log10 : identity
     )
 
-    hm = heatmap!(ax, x, y, Z;
-        colormap   = :blues,
-        colorrange = (0.0, vmax),
-        lowclip    = :white,
-    )
+    if plot_largest
+        # --- Two-category plot: total & largest ---
+        offset = 0.12
+        w = 0.3
 
-    # Plot the chosen point as a red dot
-    scatter!(ax, [x0], [y0]; color = (:red, 0.9), markersize = 10)
+        pos_tot = centers .- offset
+        pos_lrg = centers .+ offset
 
-    Colorbar(fig[1, 2], hm;
-        label  = "P(drain to point)",
-        height = 300,
-    )
+        x_tot = vcat([fill(pos_tot[i], length(v)) for (i,v) in enumerate(lake_vols)]...)
+        y_tot = vcat(lake_vols...)
 
-    if savepath !== nothing
-        save(savepath, fig; px_per_unit = 4)
-        println("✅ Saved point-catchment plot to: $savepath")
+        x_lrg = vcat([fill(pos_lrg[i], length(v)) for (i,v) in enumerate(largest_lake_vols)]...)
+        y_lrg = vcat(largest_lake_vols...)
+
+        boxplot!(ax, x_tot, y_tot; color=:dodgerblue, width=w)
+        boxplot!(ax, x_lrg, y_lrg; color=:orange, width=w)
+
+        scatter!(ax, pos_tot, [mean(v) for v in lake_vols];
+                 color=:black, marker=:cross, markersize=9)
+        scatter!(ax, pos_lrg, [mean(v) for v in largest_lake_vols];
+                 color=:black, marker=:cross, markersize=9)
+
+        lines!(ax, [NaN], [NaN]; color=:dodgerblue, label="Total pockets volume")
+        lines!(ax, [NaN], [NaN]; color=:orange,     label="Largest pocket volume")
+
+    else
+        # --- Single-category plot: total only ---
+        w = 0.5
+        pos_tot = centers
+
+        x_tot = vcat([fill(pos_tot[i], length(v)) for (i,v) in enumerate(lake_vols)]...)
+        y_tot = vcat(lake_vols...)
+
+        boxplot!(ax, x_tot, y_tot; color=:dodgerblue, width=w)
+
+        scatter!(ax, pos_tot, [mean(v) for v in lake_vols];
+                 color=:black, marker=:cross, markersize=9)
+
+        lines!(ax, [NaN], [NaN]; color=:dodgerblue, label="Total pockets volume")
     end
 
+    save(savepath, fig)
+    println("✅ Saved boxplot to: $savepath")
     return fig
 end
-

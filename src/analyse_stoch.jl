@@ -13,7 +13,7 @@ include("functions.jl")
 using .LakeAnalysis
 
 # --- Params / Paths ---
-N = 10  # number of realizations 
+N = 1000  # number of realizations 
 name = "2024_June"   # or "2024_October"
 datadir_WWFS_input = "/scratch-3/cogier/data/BonnePierre_input/WWFS_input"
 output_dir         = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
@@ -126,7 +126,7 @@ plot_lake_depth(
 
 # --- Boxplot: total lake volume and largest-lake volume across aggr1 to aggr5 ---
 
-labels = ["no unc.", "bed. unc.", "surf. unc.", "f. unc.", "all unc"]
+labels = ["none", "bedrock", "surface", "f", "all"]
 
 lake_vols = [
     aggr5.lake_fs_vol,
@@ -144,50 +144,22 @@ largest_lake_vols = [
     aggr1.largest_lake_fs_vol,
 ]
 
-fig = Figure(size = (420, 420))
-ax  = Axis(fig[1, 1];
-    ylabel = "Water pocket volume (m³)",
-    xticks = (1:length(labels), labels)
+
+# --- Plot only total lake volume
+plot_lake_volume_boxplot(
+    lake_vols, largest_lake_vols,
+    labels, joinpath(output_dir, "boxplot_total_vs_largest_$(name).png");
+    plot_largest = false,  # true to plot largest lake volume in addition
+    logscale = false
 )
 
-n       = length(labels)
-centers = 1:n
-offset  = 0.12
-w       = 0.3
-
-pos_tot = centers .- offset
-pos_lrg = centers .+ offset
-
-x_tot = vcat([fill(pos_tot[i], length(v)) for (i,v) in enumerate(lake_vols)]...)
-y_tot = vcat(lake_vols...)
-x_lrg = vcat([fill(pos_lrg[i], length(v)) for (i,v) in enumerate(largest_lake_vols)]...)
-y_lrg = vcat(largest_lake_vols...)
-
-boxplot!(ax, x_tot, y_tot; color=:dodgerblue, width=w)
-boxplot!(ax, x_lrg, y_lrg; color=:orange,     width=w)
-
-scatter!(ax, pos_tot, [mean(v) for v in lake_vols];
-         color=:black, marker=:cross, markersize=9)
-scatter!(ax, pos_lrg, [mean(v) for v in largest_lake_vols];
-         color=:black, marker=:cross, markersize=9)
-
-lines!(ax, [NaN], [NaN]; color=:dodgerblue, label="Total pockets volume")
-lines!(ax, [NaN], [NaN]; color=:orange,     label="Largest pocket volume")
-#Legend(fig[2, 1], ax; framevisible=false)
-
-save(joinpath(output_dir, "boxplot_total_vs_largest_$(name).png"), fig)
-println("✅ Saved: ", joinpath(output_dir, "boxplot_total_vs_largest_$(name).png"))
-
-
-
 # --- Boxplot: flotation uncertainty correlation lengths (linear y) ---
-Ls_labels = ["L=10 m", "L=50 m", "L=100 m", "L=1000 m"]
+Ls_labels = ["L=10 m", "L=100 m", "L=1000 m"]
 
 # Use the total-volume vectors (NOT the whole aggr structs).
 # aggr6 → L=10 m, aggr7 → L=50 m, aggr4 → L=100 m, aggr8 → L=1000 m
 Ls_vols = [
     aggr6.lake_fs_vol,
-    aggr7.lake_fs_vol,
     aggr4.lake_fs_vol,
     aggr8.lake_fs_vol,
 ]
@@ -196,11 +168,11 @@ fig2 = Figure(size = (200, 420))
 ax2  = Axis(fig2[1, 1];
     title  = "",
     ylabel = "",
-    xticks  = (1:4, Ls_labels),
+    xticks  = (1:3, Ls_labels),
 )
 
 # Tight spacing: very wide boxes and tight x-limits
-cols = [:lightsteelblue, :steelblue, :dodgerblue, :royalblue]  # keep L=100 as dodgerblue
+cols = [:lightsteelblue, :dodgerblue, :royalblue]  # keep L=100 as dodgerblue
 for (i, v) in enumerate(Ls_vols)
     xi = fill(i, length(v))
     boxplot!(ax2, xi, v; color=cols[i], width=0.98, show_outliers=true)  # width ~1 so boxes touch
@@ -222,23 +194,4 @@ println("✅ Saved: ", joinpath(output_dir, "boxplot_flotation_totals_Ls_$(name)
     #savepath  = joinpath(output_dir, "transect_spaghetti_aggr2_vs_aggr5_$(name).png")
 #)
 
-# catchment probability at a given point 
-catch_prob   = aggr1.catchments[:, :, 1]              # Float16
-#catch_rast16 = Raster(catch_prob, dims(thickness))    # same grid as thickness
-#catch_rast = clean_raster(catch_rast16)               # → Float32, NaN instead of missing
-#write(joinpath(output_dir, "catchment_prob_point_$(name).tif"),catch_rast; force = true)
-#println("✅ Saved",joinpath(output_dir, "catchment_prob_point_$(name).tif"))
 
-# Quick visualization
-fig = Figure()
-ax  = Axis(fig[1,1], title="Catchment probability to GPR point")
-
-x,y,_ = get_axes_and_matrix(thickness)
-
-heatmap!(ax, x, y, catch_prob; colormap=:viridis, colorrange=(0,1))
-x0,y0 = 962468.722,6431539.971
-#i0, j0 = coord_to_index(surface_smooth, x0, y0)
-scatter!(ax, [x0], [y0]; color=:red, markersize=12)
-
-save(joinpath(output_dir, "catchment_prob_point_$(name).png"), fig)
-println("✅ Saved: ", joinpath(output_dir, "catchment_prob_point_$(name).png"))

@@ -148,16 +148,16 @@ function compute_distance_to_gpr(gpr_df::DataFrame, template_raster::Raster)
     return Raster(distance_map, dims(template_raster))
 end
 
-function unc_propagate(dist_raster::Raster, h_mean::Real) # so that float or integer works
-    u_minus  = (-0.27 .- 0.00077 .* dist_raster) .* h_mean
-    u_plus = (0.08  .+ 0.00083 .* dist_raster) .* h_mean  # note this is inverted from Grabe et al because here u is for the bedrock, not the ice thickness
-    # set u = 0 if d = 0 (a case not accounted above. Seems like that is what Grab et al did but it was not epxlicit in the paper)
+function unc_propagate(dist_raster::Raster) # so that float or integer works
+    # Error 1-sigma = 0.0411365519449864 * distance (mètres) + 13.34869312056046
+    u_std  = 0.04.*dist_raster .+ 13.35 # in meters
    
-    mask_zero = dist_raster .== 0
-    u_minus[mask_zero] .= 0.0  # Set u = 0 where distance is zero
-    u_plus[mask_zero]  .= 0.0 
+    #set err = 0 where GPR points exist (distance = 0)
+    #mask_zero = dist_raster .== 0
+    #u_std[mask_zero] .= 0.0  # Set u = 0 where distance is zero
     
-    return u_minus, u_plus
+    
+    return u_std
 end
 
 function surface_uncertainty_from_smoothing(surface, bed, smooth_coeff,mask) # half-window (per your current convention) 

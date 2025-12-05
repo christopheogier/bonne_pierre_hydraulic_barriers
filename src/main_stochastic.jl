@@ -85,8 +85,8 @@ z_surf_profile = _profile_vals(surface_raw, pts_profile)
 N = 1000 # number of realization
 #kernel = "gauss"
 cov_fn = WWFS.GRF.gaussian_kernel #or WWFS.GRF.exponential_kernel
-range_bed = 200 #m, see XDEM variograms outputs
-range_surf = 10 #m #variogram indicate glacier-size length, i expect it to be equal to the smoothing length scale
+range_bed = 247 #m, see XDEM variograms outputs
+#range_surf = 10 #m #variogram indicate glacier-size length, i expect it to be equal to the smoothing length scale
 corr_length_f = 100 #[10,100,1000] # ARBITRARY FOR NOW, otherwise mae a sensitivity analysis
 
 
@@ -96,14 +96,14 @@ corr_length_f = 100 #[10,100,1000] # ARBITRARY FOR NOW, otherwise mae a sensitiv
 #So, in Monte Carlo simulations: The pixel-wise variability decreases, and The realizations look smoother, with fewer high-frequency perturbations
 
 # correlation lengths
-corr_length_bed = 200 #range_bed / sqrt(3)  # m 
+corr_length_bed = range_bed / sqrt(2)  # m = 175m
 #chatgpt: For models where the variogram approaches the sill asymptotically, 
 #the practical range is defined as the distance at which the variogram reaches 95% of the sill. 
 #This practical range relates to the correlation length as follows:​
 # Gaussian Model: Practical range ≈ sqrt(3) x ℓ​ = 1.73 x l
 # Exponential Model: Practical range ≈ 3 x ℓ​
 # Spherical Model> range ≈ 0.66 x l
-corr_length_surf = 10 #range_surf / sqrt(3)      # placeholder for DEM error corr. length
+corr_length_surf = 5 #range_surf / sqrt(3)      # placeholder for DEM error corr. length
 
 
 
@@ -153,7 +153,8 @@ cases = [
 
 # --- Run all cases and save as aggr1..aggr8 ---
 for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
-
+#i=8
+#(surf_uc, bed_uc, float_uc_i)=cases[8]  # for testing a single case
 
     # Extract raster grid
     xdim, ydim = dims(surfdem)

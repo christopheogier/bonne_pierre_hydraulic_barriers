@@ -109,25 +109,24 @@ gpr_df = load_and_extend_gpr(
 # Compute distance raster to nearest GPR point
 distance_raster = compute_distance_to_gpr(gpr_df, bed_resamp)
 
-# Compute empirical uncertainty bounds based on mean ice thickness
+# Compute empirical uncertainty bounds based on distance to GPR points
 h_mean_2024 = mean(thickness[thickness .> 0]) 
 println("Mean ice thickness for November 2024: ", h_mean_2024)
-u_minus_interp, u_plus_interp = unc_propagate(distance_raster, h_mean_2024)
+u_std_interp = unc_propagate(distance_raster) # symetric
 # write
-write(joinpath(datadir_WWFS_input, "bed_err_plus_interpolation_1m.tif"), u_plus_interp, force=true)
+write(joinpath(datadir_WWFS_input, "bed_err_std_interpolation_1m.tif"), u_std_interp, force=true)
 
 # Mask uncertainty outside glacier domain
-u_minus_interp[.!mask] .= NaN
-u_plus_interp[.!mask] .= NaN
+u_std_interp[.!mask] .= NaN
 
 #### Total uncertainty bedrock
 
 # Load GPR uncertainty maps = assumed to be symetric from now own, based on the minus (larger and thus mor conservative)
-u_plus_bed = sqrt.(u_plus_gpr.^2 .+ u_plus_interp.^2)
-u_minus_bed = -sqrt.(u_minus_gpr.^2 .+ u_minus_interp.^2)
+u_plus_bed = sqrt.(u_plus_gpr.^2 .+ u_std_interp.^2)
+u_minus_bed = -sqrt.(u_minus_gpr.^2 .+ u_std_interp.^2)
 
 #one need to define a symmetric uncertainty for the bedrock (plus minus sigma, the standard deviation)
-bed_err_std = abs.(u_minus_bed)
+bed_err_std = abs.(u_plus_bed)
 
 
 # Load GPR points
@@ -162,17 +161,20 @@ end
 plot_bedrock(bed_resamp; gpr_points=gpr_points, savepath=joinpath(plots_dir, "bedrock_elevation_resamp.png"), glacier_outline_raster = ice_thickness_2024_nov_resamp)
 
 # plot bed Uncertainties
-plot_uncertainty_bed(u_plus_gpr, u_minus_gpr,
-    "Bedrock: GPR Uncertainty", "GPR +5 m", "GPR -5 m",
-    joinpath(plots_dir, "bedrock_gpr_uncertainty.png"))
+plot_uncertainty_bed(u_plus_gpr; r2 = u_minus_gpr,
+    title    = "Bedrock: GPR uncertainty",
+    subtitle1 = "GPR +5 m",
+    subtitle2 = "GPR -5 m",
+    savepath = joinpath(plots_dir, "bedrock_gpr_uncertainty.png"),
+)
   
-plot_uncertainty_bed(u_plus_interp, u_minus_interp,
-    "Bedrock: GLATE interpolation uncertainty", "Interpolation +", "Interpolation -",
-    joinpath(plots_dir, "glate_interp_uncertainty.png"))
+plot_uncertainty_bed(u_std_interp;  # symetric error field
+    title="Bedrock: GLATE interpolation uncertainty", subtitle1="Interpolation std +-σ",
+    savepath=joinpath(plots_dir, "glate_interp_uncertainty.png"))
 
-plot_uncertainty_bed(u_plus_bed,u_minus_bed,
-    "Cumulative bedrock uncertainty (GPR + GLATE-Interpolation)", "+ sigma", "- sigma",
-    joinpath(plots_dir, "bedrock_all_uncertainty.png"))
+plot_uncertainty_bed(bed_err_std;
+    title="" , subtitle1="",
+    savepath=joinpath(plots_dir, "bedrock_all_uncertainty.png"))
 
 
 # save data for WWFS input:
@@ -190,7 +192,7 @@ write(joinpath(datadir_WWFS_input, "bed_err_minus_gpr5m_1m.tif"), u_minus_gpr, f
 write(joinpath(datadir_WWFS_input, "bedrock_err_plus_1m.tif"), u_plus_bed, force=true)
 write(joinpath(datadir_WWFS_input, "bedrock_err_minus_1m.tif"), u_minus_bed, force=true)
 write(joinpath(datadir_WWFS_input, "bedrock_err_std_1m.tif"), bed_err_std, force=true)
-write(joinpath(datadir_WWFS_input, "bedrock_err_interp_plus_1m.tif"),u_plus_interp , force=true)
+write(joinpath(datadir_WWFS_input, "bedrock_err_interp_std_1m.tif"),u_std_interp , force=true)
 #surface
 write(joinpath(datadir_WWFS_input, "surface_2021_cr.tif"), surface_2021_cr,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"), surface_2024_oct_resamp,force=true)

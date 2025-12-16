@@ -125,7 +125,7 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
     fig = Figure(size=(800, 600))
     ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)")#, title="Bedrock elevation (m a.s.l.)")
 
-    hm = heatmap!(ax, x, y, Z; colormap=:thermal, colorrange=(vmin, vmax))
+    hm = heatmap!(ax, x, y, Z; colormap=:heat, colorrange=(vmin, vmax))
     # 20m contour lines
     contour!(ax, x, y, Z; levels=range(vmin, stop=vmax, step=20), linewidth=0.5, color=:black)
 
@@ -159,6 +159,122 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
 
     return fig
 end
+
+# --- Hillshade helper (simple finite differences) ---
+function hillshade(Z::AbstractMatrix, x::AbstractVector, y::AbstractVector;
+                   azimuth_deg::Float64 = 315.0, altitude_deg::Float64 = 60.0) # reduce altitude_deg for stronger shadows
+
+    # spacing (assumes regular grid)
+    dx = abs(x[2] - x[1])
+    dy = abs(y[2] - y[1])
+
+    # gradients
+    dzdx = similar(Z)
+    dzdy = similar(Z)
+
+    # finite differences (central in interior, forward/backward at edges)
+    @inbounds for j in axes(Z,2), i in axes(Z,1)
+        if !isfinite(Z[i,j])
+            dzdx[i,j] = NaN
+            dzdy[i,j] = NaN
+            continue
+        end
+
+        i0 = i == first(axes(Z,1)) ? i : i-1
+        i1 = i == last(axes(Z,1))  ? i : i+1
+        j0 = j == first(axes(Z,2)) ? j : j-1
+        j1 = j == last(axes(Z,2))  ? j : j+1
+
+        z_im1 = Z[i0, j]
+        z_ip1 = Z[i1, j]
+        z_jm1 = Z[i, j0]
+        z_jp1 = Z[i, j1]
+
+        dzdx[i,j] = (z_ip1 - z_im1) / ( (i1 - i0) * dx )
+        dzdy[i,j] = (z_jp1 - z_jm1) / ( (j1 - j0) * dy )
+    end
+
+    # illumination
+    az = deg2rad(azimuth_deg)
+    alt = deg2rad(altitude_deg)
+
+    # slope/aspect
+    slope = atan.(sqrt.(dzdx.^2 .+ dzdy.^2))
+    aspect = atan.(dzdy, .-dzdx)  # aspect measured clockwise from north-ish convention
+
+    hs = sin(alt) .* cos.(slope) .+ cos(alt) .* sin.(slope) .* cos.(az .- aspect)
+
+    # clip and normalize to [0,1]
+    hs = clamp.(hs, 0.0, 1.0)
+    return hs
+end
+
+
+"""
+plot_surface_hillshade(surface; outline_raster=nothing, savepath=nothing)
+
+- `surface` :: Raster (e.g. surface_2024_june.tif)
+- `outline_raster` :: Raster where >0 defines glacier (e.g. thickness raster)
+Produces a hillshade of the surface DEM + glacier outline.
+"""
+function plot_surface_hillshade(surface::Raster;
+                                outline_raster::Union{Raster,Nothing}=nothing,
+                                savepath::Union{String,Nothing}=nothing)
+
+    x, y, Zs = get_axes_and_matrix(surface)
+
+    # --- Hillshade over the full DEM (no clipping) ---
+    hs = hillshade(Zs, x, y)
+
+    fig = Figure(size=(800, 600))
+    ax  = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)")
+
+    hm = heatmap!(ax, x, y, hs; colormap=:grays, colorrange=(0, 1))
+
+    # --main lake mask overlay (hard-coded shapefile) ---
+    lake_mask_path = "/scratch-3/cogier/data/BonnePierre_input/Lac_plein.shp"
+    if isfile(lake_mask_path)
+        _overlay_depressions!(ax, lake_mask_path;
+            linecolor = (:green, 0.9),
+            fillcolor = (:green, 0.25),
+            lw        = 1.0
+        )
+    else
+        @warn "Lake mask shapefile not found: $lake_mask_path"
+    end
+
+    # --- 20 m elevation contours on top of hillshade ---
+    vmin, vmax = finite_minmax(Zs)
+    step = 20.0
+    lmin = floor(vmin/step) * step
+    lmax = ceil(vmax/step)  * step
+    levels = collect(lmin:step:lmax)
+
+    contour!(ax, x, y, Zs;
+        levels    = levels,
+        linewidth = 0.6,
+        color     = :black
+    )
+
+    # --- Glacier outline (from thickness raster) ---
+    if outline_raster !== nothing
+        _, _, Z_out = get_axes_and_matrix(outline_raster)
+        mask_outline = Int.(Z_out .> 0)
+        contour!(ax, x, y, mask_outline; levels=[0.5], color=:blue, linewidth=1.5)
+    end
+
+    # Optional colorbar (keep/remove as you prefer)
+    #cb = Colorbar(fig[1, 2], hm; ticks=([0, 0.5, 1.0], ["0", "0.5", "1"]), label="Hillshade")
+    #cb.height[] = 350
+
+    if savepath !== nothing
+        save(savepath, fig; px_per_unit=4)
+        println("✅ Saved surface hillshade plot to: $savepath")
+    end
+
+    return fig
+end
+
 
 function plot_uncertainty_bed(
     r1::Raster;
@@ -200,6 +316,14 @@ function plot_uncertainty_bed(
             colormap = cmap,
             colorrange = (vmin, vmax)
         )
+
+        # --- lines of uncertainty ---
+        step   = 5
+        lmin   = floor(vmin/step) * step
+        lmax   = ceil(vmax/step) * step
+        levels = collect(lmin:step:lmax)
+        contour!(ax, x, y, Z1; levels=levels, linewidth=0.5, color=:black)
+
 
         Colorbar(fig[1, 2], hm;
             label = "Standard deviation (m)",

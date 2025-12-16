@@ -157,6 +157,9 @@ for (raster, name) in ice_thickness_rasters
     plot_ice_thickness(raster;gpr_points=nothing,savepath=savepath)
 end
 
+# plot surface hillshade
+plot_surface_hillshade(surface_2024_oct_resamp; outline_raster=ice_thickness_2024_oct, savepath=joinpath(plots_dir, "surface_hillshade.png"))
+
 # bedrock
 plot_bedrock(bed_resamp; gpr_points=gpr_points, savepath=joinpath(plots_dir, "bedrock_elevation_resamp.png"), glacier_outline_raster = ice_thickness_2024_nov_resamp)
 

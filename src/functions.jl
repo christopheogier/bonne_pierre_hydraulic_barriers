@@ -219,4 +219,94 @@ function coord_to_index(raster, x, y)
     return i, j
 end
 
+"""
+    _profile_vals(r::Raster, pts; method=:bilinear, fill=NaN)
+
+Sample raster `r` along a polyline given by `pts = [(x,y), ...]`.
+
+- `method = :nearest` or `:bilinear`
+- `fill` returned for points outside the raster domain
+"""
+function _profile_vals(r::Raster, pts::AbstractVector{<:Tuple};
+                       method::Symbol = :bilinear,
+                       fill = NaN32)
+
+    xdim, ydim = dims(r)
+    xs = collect(xdim)
+    ys = collect(ydim)
+    nx = length(xs)
+    ny = length(ys)
+
+    # assume regular spacing
+    dx = xs[2] - xs[1]
+    dy = ys[2] - ys[1]
+
+    # handle possibly decreasing axes (common in rasters)
+    x0 = xs[1]; y0 = ys[1]
+    x_increasing = xs[end] > xs[1]
+    y_increasing = ys[end] > ys[1]
+
+    out = Vector{Float32}(undef, length(pts))
+
+    @inbounds for k in eachindex(pts)
+        x, y = pts[k]
+
+        # fractional index in 1-based coordinates
+        fx = (x - x0)/dx + 1
+        fy = (y - y0)/dy + 1
+
+        # if axis is decreasing, flip fractional coordinate
+        if !x_increasing
+            fx = (x0 - x)/dx + 1
+        end
+        if !y_increasing
+            fy = (y0 - y)/dy + 1
+        end
+
+        if method === :nearest
+            i = round(Int, fx)
+            j = round(Int, fy)
+            if 1 ≤ i ≤ nx && 1 ≤ j ≤ ny
+                v = r[i, j]
+                out[k] = ismissing(v) ? fill : Float32(v)
+            else
+                out[k] = fill
+            end
+
+        elseif method === :bilinear
+            i0 = floor(Int, fx)
+            j0 = floor(Int, fy)
+            i1 = i0 + 1
+            j1 = j0 + 1
+
+            if 1 ≤ i0 ≤ nx && 1 ≤ i1 ≤ nx && 1 ≤ j0 ≤ ny && 1 ≤ j1 ≤ ny
+                tx = Float32(fx - i0)
+                ty = Float32(fy - j0)
+
+                v00 = r[i0, j0]
+                v10 = r[i1, j0]
+                v01 = r[i0, j1]
+                v11 = r[i1, j1]
+
+                # if any corner is missing, fall back to fill
+                if any(ismissing, (v00, v10, v01, v11))
+                    out[k] = fill
+                else
+                    v00 = Float32(v00); v10 = Float32(v10)
+                    v01 = Float32(v01); v11 = Float32(v11)
+                    out[k] = (1-tx)*(1-ty)*v00 + tx*(1-ty)*v10 + (1-tx)*ty*v01 + tx*ty*v11
+                end
+            else
+                out[k] = fill
+            end
+
+        else
+            error("Unknown method = $method. Use :nearest or :bilinear.")
+        end
+    end
+
+    return out
+end
+
+
 

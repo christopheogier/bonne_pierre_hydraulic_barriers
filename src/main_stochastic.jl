@@ -169,7 +169,6 @@ for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
     #sink_areas = (outlet = [CartesianIndices((1:10, 1:length(ydim)))[:],CartesianIndices((1:10, 1:(length(ydim)÷2)))[:]])
     
 
-
     println("🔄 Running WWFS stochastic for aggr$(i) on $run_name...")
     model, get_sample, aggregate = WWFS.make_fns(
         dx,
@@ -181,21 +180,32 @@ for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
         rmask
     )
     
-    # Largest-lake volume per realization
+    total_vols_all = Float64[] # per-realization total volume of all WPs 
     largest_vols = Float64[]
-    #  Per-realization transect profiles (for all cases)  # this is to check the mean versus stochastic ensembles 
+    total_vols_gt1000 = Float64[]   # per-realization total volume of *individual* WPs > 1000 m³
+    n_lakes_gt1000    = Int[]       # per-realization count of WPs > 1000 m³
     phi_profiles  = Vector{Vector{Float32}}()
     lake_profiles = Vector{Vector{Float32}}()
+
+    vol_thr = 1000.0  # m³
 
     for _ in 1:N
         s = get_sample()
         _, output = model(s...)
         lakes_free_surf = output[3][2]
-        phi             = output[2][4]   # (sc_locs, kappas, diro, phi)
+        phi             = output[2][4]
 
-        # 1) largest lake volume
-        analysis = analyze_lakes(lakes_free_surf, thickness; min_depth=2.0)
+        # 1) lake volumes (NO depth threshold anymore)
+        analysis = analyze_lakes(lakes_free_surf, thickness; min_depth=0.0)
         push!(largest_vols, analysis.LargestLake.volume)
+
+        vols = analysis.stats.volume
+        # total volume of all WP
+        push!(total_vols_all, sum(vols))
+        # total volume of individual WPs > 1000 m³
+        inds = findall(>(vol_thr), vols)                 # indices of *individual* lakes > 1000 m³
+        push!(total_vols_gt1000, sum(vols[inds]))        # sum of those individual lakes only
+        push!(n_lakes_gt1000, length(inds))              # how many such lakes
 
         # 2) profiles along A→B
         phi_r  = Raster(phi,             dims(thickness))
@@ -205,19 +215,22 @@ for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
         push!(lake_profiles, Float32.(_profile_vals(lake_r, pts_profile)))
     end
 
-
     # Aggregate maps/statistics over N runs
     aggr = map_mc(model, get_sample, aggregate, N)
 
-    # Attach largest-lake ensemble + transect spaghetti + static profiles
-    aggr = merge(aggr, (
-        largest_lake_fs_vol = Float32.(largest_vols),
-        phi_profiles        = phi_profiles,              # Vector{Vector{Float32}}
-        lake_profiles       = lake_profiles,             # Vector{Vector{Float32}}
-        dist_profile        = Float32.(dist_profile),    # 1D distance along A→B
-        z_bed_profile       = Float32.(z_bed_profile),
-        z_surf_profile      = Float32.(z_surf_profile),
-    ))
+    
+aggr = merge(aggr, (
+    largest_lake_fs_vol = Float32.(largest_vols),
+    lake_fs_vol         = Float32.(total_vols_all),      
+    lake_fs_vol_gt1000  = Float32.(total_vols_gt1000),
+    n_lakes_gt1000      = Int.(n_lakes_gt1000),
+    phi_profiles        = phi_profiles,
+    lake_profiles       = lake_profiles,
+    dist_profile        = Float32.(dist_profile),
+    z_bed_profile       = Float32.(z_bed_profile),
+    z_surf_profile      = Float32.(z_surf_profile),
+))
+
 
     # Save with index-matched file name
     outfile = joinpath(output_dir, "aggr$(i)_n$(N)_$(run_name).jls")

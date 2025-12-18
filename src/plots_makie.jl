@@ -433,11 +433,27 @@ function plot_lake_depth(
 
     fig = Figure(size=(800, 600))
     ax = Axis(fig[1, 1];
-        aspect = DataAspect(),
-        xlabel = "X (m)",
-        ylabel = "Y (m)",
-        title  = "Water pocket depth (m > $(min_depth))"
+    aspect = DataAspect(),
+    xlabel = "X (m)",
+    ylabel = "Y (m)",
+    #title  = "Water pocket depth (m > $(min_depth))",
+
+    titlesize = 18,
+    xlabelsize = 16,
+    ylabelsize = 16,
+    xticklabelsize = 16,   # size for subplots
+    yticklabelsize = 16,
     )
+
+    
+    # --- Zoom-out / fixed view window ---
+    x_left = minimum(x)         
+    xlims!(ax, x_left, 964000.0)
+    ylims!(ax, 6431000.0, 6432000.0)
+
+    # ↓↓↓ reduce clutter
+    ax.xticks = WilkinsonTicks(4)  # ALSO for subplots
+    ax.yticks = WilkinsonTicks(4)
 
     # --- Optional depressions overlay ---
     if depressions_path !== nothing
@@ -506,6 +522,7 @@ function plot_lake_depth(
 
         vmin, vmax = finite_minmax(Z_lake)
         vmin = min_depth
+        vmax = 25.0   # ← FIXED maximum for better comparability in SUBPLOTS (25 correspond to determisitc and also bedrock unc. max)
 
         # Draw lakes on top of upslope area
         hm_lake = heatmap!(ax, x, y, Z_lake;
@@ -525,7 +542,7 @@ function plot_lake_depth(
         for (_, mask) in analysis.lake_masks
             if any(mask)
                 labeled = Int.(mask)
-                contour!(ax, x, y, labeled; levels=[0.5], color=:blue, linewidth=1)
+                contour!(ax, x, y, labeled; levels=[0.5], color=:purple, linewidth=1)
             end
         end
     end
@@ -546,7 +563,7 @@ function plot_lake_depth(
                     ax, x, y, labeled;
                     levels    = [0.5],
                     color     = (:red, 0.9),
-                    linewidth = 1.5,
+                    linewidth = 2,
                 )
             end
         end
@@ -585,7 +602,7 @@ function plot_lake_depth(
         Colorbar(fig[1, 2], hm_lake;
             ticks  = (ticks_vals, ticks_labels),
             label  = "Water pockets height (m)",
-            height = 300
+            height = 200 ## PUT 300 for SINGLE PLOT
         )
     end
 
@@ -598,7 +615,9 @@ function plot_lake_depth(
         Colorbar(fig[1, 3], hm_area;
             ticks  = (ticks_vals, ticks_labels),
             label  = "Upslope catchment area (m²)",
-            height = 300
+            height = 200,  ## PUT 300 for SINGLE PLOT
+            labelsize      = 15,
+            ticklabelsize  = 14
         )
     end
 
@@ -653,6 +672,7 @@ function plot_lake_depth(
 
     save(savepath, fig; px_per_unit = 4)
     println("✅ Saved lake depth plot with upslope area to: $savepath")
+
     return fig
 end
 
@@ -822,7 +842,7 @@ function plot_profiles(bedrock::Raster, surface_raw::Raster, phi::Raster, lakes_
     # Force y-axis limits
     y_min = minimum(z_bed)  - 15 # m
     y_max = maximum(z_surf) + 5  # m
-    ylims!(ax, y_min, y_max)
+    #ylims!(ax, y_min, y_max)
 
     vlines!(ax, [0, dist[end]]; color=:gray, linestyle=:dash, linewidth=1)
     # DOUBLE CHECK A AND B 

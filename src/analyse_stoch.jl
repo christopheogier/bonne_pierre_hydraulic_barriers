@@ -6,25 +6,47 @@ using WhereTheWaterFlowsSubglacially, WhereTheWaterFlows
 const WWFS = WhereTheWaterFlowsSubglacially
 const WWF  = WhereTheWaterFlows
 using Serialization
+using Base: summarysize
 
 include("LakeAnalysis.jl")
 include("plots_makie.jl")
 include("functions.jl")
 using .LakeAnalysis
 
+
+# ======================================================================================
 # --- Params / Paths ---
-N = 1000  # number of realizations 
-name = "2024_June"   # or "2024_October"
+# ======================================================================================
+N = 10                          # number of realizations
+name = "2024_June"              # or "2024_October"
 datadir_WWFS_input = "/scratch-3/cogier/data/BonnePierre_input/WWFS_input"
 output_dir         = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
 
-# Map run name -> thickness file
+# --- which case do we use for MAPS/PLOTTING? (important) ---
+# NOTE: CSV summary uses aggr1–aggr8 anyway.
+case_for_maps = 4             # 1=all unc., 2=bed only,.. 4= Lf 100m only ..., 8=f(L=1000m)
+
+# --- plot constraint: plot only big WPs to avoid killing plotting ---
+V_thr_plot = 1000.0             # m^3
+
+# --- lake analysis threshold (used to build connected components)
+min_depth = 0.1                # m  (WARNING: plotting ALL components may kill)
+
+
+# ======================================================================================
+# --- Input rasters (grid definition)
+# ======================================================================================
 thickness_file = Dict(
     "2024_October" => "ice_thickness_2024_oct.tif",
     "2024_June"    => "ice_thickness_2024_june.tif",
 )[name]
 
-# --- Load aggregated Monte Carlo results (parametric in `name`) ---
+thickness = clean_raster(Raster(joinpath(datadir_WWFS_input, thickness_file)))
+
+
+# ======================================================================================
+# --- Load aggregated Monte Carlo results (parametric in `name`)
+# ======================================================================================
 aggr1 = deserialize(joinpath(output_dir, "aggr1_n$(N)_$(name).jls")) # all uncertainties
 aggr2 = deserialize(joinpath(output_dir, "aggr2_n$(N)_$(name).jls")) # bed only
 aggr3 = deserialize(joinpath(output_dir, "aggr3_n$(N)_$(name).jls")) # surface only
@@ -34,44 +56,6 @@ aggr6 = deserialize(joinpath(output_dir, "aggr6_n$(N)_$(name).jls")) # flotation
 aggr7 = deserialize(joinpath(output_dir, "aggr7_n$(N)_$(name).jls")) # flotation only, l = 50m
 aggr8 = deserialize(joinpath(output_dir, "aggr8_n$(N)_$(name).jls")) # flotation only, l = 1000m
 
-
-# --- Reconstruct rasters from arrays (use thickness grid) ---
-thickness        = clean_raster(Raster(joinpath(datadir_WWFS_input, thickness_file)))
-lake_depth_mean  = Raster(aggr1.lakes_depth_fs, dims(thickness))
-area_stoch       = Raster(aggr1.areas,          dims(thickness))
-
-# write area_stoch raster
-#write(joinpath(output_dir, "stochastic_upslope_area_$(name).tif"), area_stoch,force=true)
-#println("✅ Saved: ", joinpath(output_dir, "stochastic_upslope_area_$(name).tif"))
-
-# --- Analyze ---
-println("  Analyzing stochastic lake depth (free surface) for $(name)...")
-analysis = analyze_lakes(lake_depth_mean, thickness; min_depth=2.0)
-
-df = DataFrame(
-    run = name,
-    smooth_surface_ice_fraction = NaN,  # should be taken fom the file name?
-    min_depth_m = analysis.min_depth,
-    supragl_fill_fraction = NaN,        
-    n_lakes = nrow(analysis.stats),
-    total_volume_m3 = mean(aggr1.lake_fs_vol), #and not sum(analysis.stats.volume)! 
-    total_volume_std = std(aggr1.lake_fs_vol),   
-    #sum(analysis.stats.volume) = volume computed from the mean depth map (lakes_depth_fs) after thresholding at 2 m and relabeling components.
-    # which is different that mean(aggr1.lake_fs_vol) in principle, because the mean of lake volumes over all stochastic runs is not equal to the volume computed from the mean lake depth map.
-    #total_volume_m3 = sum(analysis.stats.volume),
-    mean_area_m2 = mean(analysis.stats.area_m2),
-    mean_depth_m = mean(collect(lake_depth_mean)[analysis.labels .> 0]),
-    max_depth_m = maximum(collect(lake_depth_mean)[analysis.labels .> 0]),
-    mean_largest_lake_m3 = mean(aggr1.largest_lake_fs_vol), #mean of the 20 realizations
-    mean_largest_lake_std = std(aggr1.largest_lake_fs_vol)
-    #largest_single_volume_m3 = analysis.LargestLake.volume #is the largest lake from the mean depth field, not the mean of the largest lake across realizations.
-)
-
-CSV.write(joinpath(output_dir, "WWFS_stoch_lake_summary_$(name).csv"), df)
-
-# --- Save summary table of mean and std for all stochastic runs (aggr1–aggr8) ---
-
-# Define labels corresponding to your 8 runs
 aggr_labels = [
     "all unc.",
     "bed. unc.",
@@ -83,49 +67,124 @@ aggr_labels = [
     "f. unc. (L=1000 m)",
 ]
 
-# Collect all aggr datasets in order
 aggr_list = [aggr1, aggr2, aggr3, aggr4, aggr5, aggr6, aggr7, aggr8]
 
-# Compute summary statistics (mean + std) for total volumes
-means = [mean(a.lake_fs_vol) for a in aggr_list]
-stds  = [std(a.lake_fs_vol)  for a in aggr_list]
-means_largest = [mean(a.largest_lake_fs_vol) for a in aggr_list]
-stds_largest  = [std(a.largest_lake_fs_vol)  for a in aggr_list]
+# pick the case for maps/plotting
+aggr_map = aggr_list[case_for_maps]
+println("📌 Map/plot case: aggr$(case_for_maps) = $(aggr_labels[case_for_maps])")
 
-# Combine into a DataFrame
-df_summary = DataFrame(
-    label = aggr_labels,
-    mean_total_volume_m3 = means,
-    std_total_volume_m3 = stds,
-    mean_largest_lake_m3 = means_largest,
-    std_largest_lake_m3 = stds_largest
+
+# ======================================================================================
+# --- Reconstruct rasters from arrays (use thickness grid)
+# ======================================================================================
+lake_depth_mean = Raster(aggr_map.lakes_depth_fs, dims(thickness))
+area_stoch      = Raster(aggr_map.areas,         dims(thickness))
+
+
+# ======================================================================================
+# --- Analyze mean lake-depth map (for plotting mask only)
+# ======================================================================================
+println("  Analyzing lake depth map (free surface) for $(name)...")
+analysis = analyze_lakes(lake_depth_mean, thickness; min_depth=min_depth)
+
+
+# ======================================================================================
+# --- CSV 1: one-line summary for aggr1 (all uncertainties) 
+# ======================================================================================
+df = DataFrame(
+    run = name,
+    N_runs = N,
+    smooth_surface_ice_fraction = NaN,
+    min_depth_m = analysis.min_depth,
+    supragl_fill_fraction = NaN,
+    n_lakes = nrow(analysis.stats),
+
+    total_volume_m3 = mean(aggr1.lake_fs_vol),
+    total_volume_std = std(aggr1.lake_fs_vol),
+
+    mean_area_m2 = mean(analysis.stats.area_m2),
+    mean_depth_m = mean(collect(lake_depth_mean)[analysis.labels .> 0]),
+    max_depth_m = maximum(collect(lake_depth_mean)[analysis.labels .> 0]),
+
+    mean_largest_lake_m3 = mean(aggr1.largest_lake_fs_vol),
+    mean_largest_lake_std = std(aggr1.largest_lake_fs_vol)
 )
 
-# Write CSV
+csv_path = joinpath(output_dir, "WWFS_stoch_lake_summary_all_unc_$(name).csv")
+CSV.write(csv_path, df)
+println("✅ Saved volume all unc summary to: ", csv_path)
+
+
+# ======================================================================================
+# --- CSV 2: summary table across aggr1–aggr8 
+# ======================================================================================
+means         = [mean(a.lake_fs_vol)          for a in aggr_list]
+stds          = [std(a.lake_fs_vol)           for a in aggr_list]
+means_largest = [mean(a.largest_lake_fs_vol)  for a in aggr_list]
+stds_largest  = [std(a.largest_lake_fs_vol)   for a in aggr_list]
+means_gt1000  = [mean(a.lake_fs_vol_gt1000)   for a in aggr_list]
+stds_gt1000   = [std(a.lake_fs_vol_gt1000)    for a in aggr_list]
+means_n_gt1000 = [mean(a.n_lakes_gt1000)      for a in aggr_list]
+stds_n_gt1000  = [std(a.n_lakes_gt1000)       for a in aggr_list]
+
+df_summary = DataFrame(
+    label = aggr_labels,
+    N_runs = fill(N, length(aggr_labels)),
+    min_depth_m = fill(min_depth, length(aggr_labels)),
+    smooth_surface_ice_fraction = fill(0.1, length(aggr_labels)),  # manual
+    supragl_fill_fraction = fill(0, length(aggr_labels)),          # manual
+
+    mean_n_wp_gt1000 = means_n_gt1000,
+    std_n_wp_gt1000  = stds_n_gt1000,
+
+    mean_total_volume_m3 = means,
+    std_total_volume_m3  = stds,
+    mean_total_volume_gt1000_m3 = means_gt1000,
+    std_total_volume_gt1000_m3  = stds_gt1000,
+
+    mean_largest_lake_m3 = means_largest,
+    std_largest_lake_m3  = stds_largest
+)
+
 csv_path = joinpath(output_dir, "WWFS_stoch_volume_summary_$(name).csv")
 CSV.write(csv_path, df_summary)
 println("✅ Saved volume summary to: ", csv_path)
 
 
+# ======================================================================================
+# --- Plot: only big WPs (individual volume > 1000 m³), otherwise plotting gets killed
+# ======================================================================================
+println("  Building plotting raster: keep only WPs with individual volume > $(V_thr_plot) m³ (min_depth=$(min_depth) m)")
 
-# --- Plot mean lake depth + area ---
+keep_labels = analysis.stats.label[analysis.stats.volume .> V_thr_plot]
+
+keep_mask = falses(size(analysis.labels))
+for lab in keep_labels
+    keep_mask .|= (analysis.labels .== lab)
+end
+
+lake_depth_mean_big = copy(lake_depth_mean)
+lake_depth_mean_big[.!keep_mask] .= 0.0
+
+analysis_big = analyze_lakes(lake_depth_mean_big, thickness; min_depth=min_depth)
+
 plot_lake_depth(
-    lake_depth_mean,
+    lake_depth_mean_big,
     thickness,
-    analysis,
-    nothing, # phi
-    joinpath(output_dir, "stochastic_lake_depth_$(name).png");
-    min_depth = analysis.min_depth,
+    analysis_big,
+    nothing,
+    joinpath(output_dir, "stochastic_lake_depth_WP1000_$(name)_aggr$(case_for_maps).png");
+    min_depth = analysis_big.min_depth,
     show_all_lakes = true,
     area = area_stoch,
     area_threshold = 1e4,
     stochastic = true
-    #depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp"
 )
 
 
-# --- Boxplot: total lake volume and largest-lake volume across aggr1 to aggr5 ---
-
+# ======================================================================================
+# --- Boxplots (kept as-is)
+# ======================================================================================
 labels = ["none", "bedrock", "surface", "f", "all"]
 
 lake_vols = [
@@ -136,6 +195,14 @@ lake_vols = [
     aggr1.lake_fs_vol,
 ]
 
+lake_vols_gt1000 = [
+    aggr5.lake_fs_vol_gt1000,
+    aggr2.lake_fs_vol_gt1000,
+    aggr3.lake_fs_vol_gt1000,
+    aggr4.lake_fs_vol_gt1000,
+    aggr1.lake_fs_vol_gt1000,
+]
+
 largest_lake_vols = [
     aggr5.largest_lake_fs_vol,
     aggr2.largest_lake_fs_vol,
@@ -144,24 +211,18 @@ largest_lake_vols = [
     aggr1.largest_lake_fs_vol,
 ]
 
-
-# --- Plot only total lake volume
 plot_lake_volume_boxplot(
-    lake_vols, largest_lake_vols,
+    lake_vols, lake_vols_gt1000,
     labels, joinpath(output_dir, "boxplot_total_vs_largest_$(name).png");
-    plot_largest = false,  # true to plot largest lake volume in addition
+    plot_largest = true,
     logscale = false
 )
 
-# --- Boxplot: flotation uncertainty correlation lengths (linear y) ---
-Ls_labels = ["L=10 m", "L=100 m", "L=1000 m"]
-
-# Use the total-volume vectors (NOT the whole aggr structs).
-# aggr6 → L=10 m, aggr7 → L=50 m, aggr4 → L=100 m, aggr8 → L=1000 m
+Ls_labels = ["L=50 m", "L=100 m", "L=1000 m"]
 Ls_vols = [
-    aggr6.lake_fs_vol,
-    aggr4.lake_fs_vol,
-    aggr8.lake_fs_vol,
+    aggr7.lake_fs_vol_gt1000,
+    aggr4.lake_fs_vol_gt1000,
+    aggr8.lake_fs_vol_gt1000,
 ]
 
 fig2 = Figure(size = (200, 420))
@@ -171,27 +232,16 @@ ax2  = Axis(fig2[1, 1];
     xticks  = (1:3, Ls_labels),
 )
 
-# Tight spacing: very wide boxes and tight x-limits
-cols = [:lightsteelblue, :dodgerblue, :royalblue]  # keep L=100 as dodgerblue
+cols = [:lightsteelblue, :dodgerblue, :royalblue]
 for (i, v) in enumerate(Ls_vols)
     xi = fill(i, length(v))
-    boxplot!(ax2, xi, v; color=cols[i], width=0.98, show_outliers=true)  # width ~1 so boxes touch
+    boxplot!(ax2, xi, v; color=cols[i], width=0.98, show_outliers=true)
     scatter!(ax2, [i], [mean(v)]; color=:black, marker=:cross, markersize=8)
 end
 xlims!(ax2, 0.51, 4.49)
 
-save(joinpath(output_dir, "boxplot_flotation_totals_Ls_$(name).png"), fig2)
-println("✅ Saved: ", joinpath(output_dir, "boxplot_flotation_totals_Ls_$(name).png"))
+save(joinpath(output_dir, "boxplot_flotation_totals_Ls_gt1000_$(name).png"), fig2)
+println("✅ Saved: ", joinpath(output_dir, "boxplot_flotation_totals_Ls_gt1000_$(name).png"))
 
 # --- Spaghetti plot of hydraulic head φ along transect A→B ---
-
-#plot_transect_spaghetti(
-    #aggr2, aggr5;  # spagethi versus mean (no unc.)
-    #case_label_spag = "bed. unc. (aggr2)",
-    #case_label_mean = "no unc. (aggr5)",
-    #plot_phi  = true,
-    #plot_lake = true,
-    #savepath  = joinpath(output_dir, "transect_spaghetti_aggr2_vs_aggr5_$(name).png")
-#)
-
-
+#plot_transect_spaghetti(...)

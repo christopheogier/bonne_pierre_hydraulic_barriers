@@ -58,6 +58,7 @@ function analyze_lakes(
 
     measurements.volume = lake_volumes
     measurements.area_m2 = lake_areas_m2
+    measurements.label = collect(1:maximum(labeled_image))
 
     largest = LargestLake(max_volume, max_area, labeled_image .== max_label)
 

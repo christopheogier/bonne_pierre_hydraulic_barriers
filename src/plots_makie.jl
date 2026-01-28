@@ -141,6 +141,23 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
     #text!(fig[1, 1], "Legend"; position = :topleft, align = (:left, :top), fontsize=8)
     end
 
+      # --- GPR water-pick evidence points ---
+    picks_path = "/scratch-3/cogier/data/BonnePierre_input/Water_picks_gpr_evidence.csv"  # hard coded
+  
+    if isfile(picks_path)
+        picks_df = CSV.read(picks_path, DataFrame)
+        x_picks = Float64.(picks_df.xcoord)
+        y_picks = Float64.(picks_df.ycoord)
+
+        scatter!(ax, x_picks, y_picks;
+                    color = (:blue, 0.4) ,
+                    marker = :circle,
+                    markersize = 3,
+                    label = "GPR water evidence")
+    else
+            @warn "skipping GPR evidence points."
+    end
+
     # Generate nice intermediate ticks between vmin and vmax, e.g. 5 ticks total
     nticks = 5
     ticks_vals = range(vmin, vmax, length=nticks)
@@ -455,14 +472,7 @@ function plot_lake_depth(
     ax.xticks = WilkinsonTicks(4)  # ALSO for subplots
     ax.yticks = WilkinsonTicks(4)
 
-    # --- Optional depressions overlay ---
-    if depressions_path !== nothing
-        _overlay_depressions!(ax, depressions_path;
-            linecolor = (:green, 0.8),
-            fillcolor = (:green, 0.2),
-            lw        = 1.0
-        )
-    end
+    
 
     # --- Upslope area: either heatmap (stochastic) or contour (deterministic) ---
     hm_area = nothing
@@ -511,6 +521,15 @@ function plot_lake_depth(
         end
     end
 
+    # --- Optional depressions overlay ---
+    if depressions_path !== nothing
+        _overlay_depressions!(ax, depressions_path;
+            linecolor = (:green, 0.8),
+            fillcolor = (:green, 0.2),
+            lw        = 1.0
+        )
+    end
+
     # --- Lake depth heatmap (viridis) ---
     hm_lake = nothing
     if lakes !== nothing
@@ -522,7 +541,7 @@ function plot_lake_depth(
 
         vmin, vmax = finite_minmax(Z_lake)
         vmin = min_depth
-        vmax = 25.0   # ← FIXED maximum for better comparability in SUBPLOTS (25 correspond to determisitc and also bedrock unc. max)
+        #vmax = 25.0   # ← FIXED maximum for better comparability in SUBPLOTS (25 correspond to determisitc and also bedrock unc. max)
 
         # Draw lakes on top of upslope area
         hm_lake = heatmap!(ax, x, y, Z_lake;
@@ -578,8 +597,8 @@ function plot_lake_depth(
         levels   = collect(vmin_phi:10:vmax_phi)
         contour!(ax, x, y, Z_phi;
             levels    = levels,
-            linewidth = 0.8,
-            color     = :black
+            linewidth = 0.7,
+            color     = :grey
         )
     end
 
@@ -622,22 +641,26 @@ function plot_lake_depth(
     end
 
       # --- GPR water-pick evidence points (only in stochastic plots) ---
-    if stochastic
-        picks_path = "/scratch-3/cogier/data/BonnePierre_input/Water_picks_gpr_evidence.csv"  # hard coded
-        if isfile(picks_path)
-            picks_df = CSV.read(picks_path, DataFrame)
-            x_picks = Float64.(picks_df.xcoord)
-            y_picks = Float64.(picks_df.ycoord)
-
-            scatter!(ax, x_picks, y_picks;
-                     color = (:black, 0.4) ,
-                     marker = :circle,
-                     markersize = 3,
-                     label = "GPR water evidence")
-        else
-            @warn "skipping GPR evidence points."
-        end
+    picks_path = "/scratch-3/cogier/data/BonnePierre_input/Water_picks_gpr_evidence.csv"  # hard coded
+    if stochastic 
+        gpr_color =:darkblue
+    else
+        gpr_color = :black
     end
+    if isfile(picks_path)
+        picks_df = CSV.read(picks_path, DataFrame)
+        x_picks = Float64.(picks_df.xcoord)
+        y_picks = Float64.(picks_df.ycoord)
+
+        scatter!(ax, x_picks, y_picks;
+                    color = (gpr_color, 0.4) ,
+                    marker = :circle,
+                    markersize = 3,
+                    label = "GPR water evidence")
+    else
+            @warn "skipping GPR evidence points."
+    end
+   
 
     # --- Legend entries ---
     lines!(ax, [NaN], [NaN]; color = :black, linewidth = 0.8,
@@ -655,13 +678,7 @@ function plot_lake_depth(
         end
     end
 
-    Legend(fig, ax;
-        tellwidth    = false,
-        tellheight   = false,
-        halign       = :left,
-        valign       = :top,
-        framevisible = false
-    )
+    #Legend(fig, ax;tellwidth    = false, tellheight   = false,halign       = :left,valign       = :top,amevisible = false)
 
     # --- Glacier outlines (Oct thickness + current mask) ---
     outline_thk = Raster("/scratch-3/cogier/data/BonnePierre_input/WWFS_input/ice_thickness_2024_oct.tif")
@@ -1112,6 +1129,12 @@ function plot_lake_volume_boxplot(
         xticks  = (centers, labels),
         yscale  = logscale ? log10 : identity
     )
+
+    # --- force identical y-scale ---
+    ylims!(ax, 0.0, 8e5)
+
+    ytick_vals   = range(0.0, 8e5; length=5)
+
 
     if plot_largest
         # --- Two-category plot: total & largest ---

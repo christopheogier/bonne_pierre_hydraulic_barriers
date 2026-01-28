@@ -17,20 +17,20 @@ using .LakeAnalysis
 # ======================================================================================
 # --- Params / Paths ---
 # ======================================================================================
-N = 10                          # number of realizations
+N = 1000                          # number of realizations
 name = "2024_June"              # or "2024_October"
 datadir_WWFS_input = "/scratch-3/cogier/data/BonnePierre_input/WWFS_input"
 output_dir         = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
 
 # --- which case do we use for MAPS/PLOTTING? (important) ---
 # NOTE: CSV summary uses aggr1–aggr8 anyway.
-case_for_maps = 4             # 1=all unc., 2=bed only,.. 4= Lf 100m only ..., 8=f(L=1000m)
+case_for_maps = 1             # 1=all unc., 2=bed only,.. 4= Lf 100m only ..., 8=f(L=1000m)
 
 # --- plot constraint: plot only big WPs to avoid killing plotting ---
 V_thr_plot = 1000.0             # m^3
 
 # --- lake analysis threshold (used to build connected components)
-min_depth = 0.1                # m  (WARNING: plotting ALL components may kill)
+min_depth = 0.1               # m  (WARNING: plotting ALL components may kill)
 
 
 # ======================================================================================
@@ -214,15 +214,15 @@ largest_lake_vols = [
 plot_lake_volume_boxplot(
     lake_vols, lake_vols_gt1000,
     labels, joinpath(output_dir, "boxplot_total_vs_largest_$(name).png");
-    plot_largest = true,
+    plot_largest = false, # here true to plot second
     logscale = false
 )
 
 Ls_labels = ["L=50 m", "L=100 m", "L=1000 m"]
 Ls_vols = [
-    aggr7.lake_fs_vol_gt1000,
-    aggr4.lake_fs_vol_gt1000,
-    aggr8.lake_fs_vol_gt1000,
+    aggr7.lake_fs_vol,
+    aggr4.lake_fs_vol,
+    aggr8.lake_fs_vol,
 ]
 
 fig2 = Figure(size = (200, 420))
@@ -231,6 +231,11 @@ ax2  = Axis(fig2[1, 1];
     ylabel = "",
     xticks  = (1:3, Ls_labels),
 )
+# --- enforce identical y-scale than total boxplots ---
+ylims!(ax2, 0.0, 8e5)
+
+# ticks at 0,2,4,6 (×10⁵)
+ytick_vals   = [0.0, 2e5, 4e5, 6e5, 8e5]
 
 cols = [:lightsteelblue, :dodgerblue, :royalblue]
 for (i, v) in enumerate(Ls_vols)

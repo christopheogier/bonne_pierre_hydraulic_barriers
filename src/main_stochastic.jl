@@ -8,6 +8,7 @@ using WhereTheWaterFlowsSubglacially, WhereTheWaterFlows
 const WWFS = WhereTheWaterFlowsSubglacially
 const WWF = WhereTheWaterFlows
 using Serialization
+using ProgressMeter
 
 
 
@@ -58,7 +59,6 @@ bed_err_std = clean_raster(Raster(joinpath(datadir_WWFS_input, "bedrock_err_std_
 # import lus and minus sigma if we can force WWF within two assymetric bound?
 
 # --- Transect A→B for profile spaghetti (same as in plot_profiles) ---
-surface_raw = clean_raster(Raster(paths[:surface_raw]))
 
 A = (962632.47, 6431521.78)  # upstream
 B = (962420.11, 6431549.94)  # downstream
@@ -68,14 +68,14 @@ x1, y1 = B
 x2, y2 = A
 L = hypot(x2 - x1, y2 - y1)
 n_profile = max(1, floor(Int, L/dx_profile)) + 1
-ts_profile = range(0.0, 1.0; length = n_profile)
+#ts_profile = range(0.0, 1.0; length = n_profile)
 
-pts_profile  = [(x1 + t*(x2 - x1), y1 + t*(y2 - y1)) for t in ts_profile]
-dist_profile = collect(range(0.0, L; length = n_profile))
+#pts_profile  = [(x1 + t*(x2 - x1), y1 + t*(y2 - y1)) for t in ts_profile]
+##dist_profile = collect(range(0.0, L; length = n_profile))
 
 # Static bedrock & surface profiles (same for all cases and runs)
-z_bed_profile  = _profile_vals(beddem,      pts_profile)
-z_surf_profile = _profile_vals(surface_raw, pts_profile)
+#z_bed_profile  = _profile_vals(beddem,      pts_profile)
+#z_surf_profile = _profile_vals(surface_raw, pts_profile)
 
 
 ################################ WWFS stochastic ########################################
@@ -88,6 +88,8 @@ cov_fn = WWFS.GRF.gaussian_kernel #or WWFS.GRF.exponential_kernel
 range_bed = 247 #m, see XDEM variograms outputs
 #range_surf = 10 #m #variogram indicate glacier-size length, i expect it to be equal to the smoothing length scale
 corr_length_f = 100 #[10,100,1000] # ARBITRARY FOR NOW, otherwise mae a sensitivity analysis
+
+min_depth = 0.1           # m  (WARNING: running min depth = 0 may take ages)
 
 
 
@@ -189,6 +191,8 @@ for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
 
     vol_thr = 1000.0  # m³
 
+    p = Progress(N; desc="analyze_lakes (aggr$(i))", dt=10.0)  # dt = refresh every ~1s
+
     for _ in 1:N
         s = get_sample()
         _, output = model(s...)
@@ -196,7 +200,7 @@ for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
         phi             = output[2][4]
 
         # 1) lake volumes (NO depth threshold anymore)
-        analysis = analyze_lakes(lakes_free_surf, thickness; min_depth=0.0)
+        analysis = analyze_lakes(lakes_free_surf, thickness; min_depth=min_depth)
         push!(largest_vols, analysis.LargestLake.volume)
 
         vols = analysis.stats.volume
@@ -208,11 +212,13 @@ for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
         push!(n_lakes_gt1000, length(inds))              # how many such lakes
 
         # 2) profiles along A→B
-        phi_r  = Raster(phi,             dims(thickness))
-        lake_r = Raster(lakes_free_surf, dims(thickness))
+        #phi_r  = Raster(phi,             dims(thickness))
+        #lake_r = Raster(lakes_free_surf, dims(thickness))
 
-        push!(phi_profiles,  Float32.(_profile_vals(phi_r,  pts_profile)))
-        push!(lake_profiles, Float32.(_profile_vals(lake_r, pts_profile)))
+        #push!(phi_profiles,  Float32.(_profile_vals(phi_r,  pts_profile)))
+        #push!(lake_profiles, Float32.(_profile_vals(lake_r, pts_profile)))
+
+        next!(p)  # <- updates bar + ETA
     end
 
     # Aggregate maps/statistics over N runs
@@ -224,11 +230,11 @@ aggr = merge(aggr, (
     lake_fs_vol         = Float32.(total_vols_all),      
     lake_fs_vol_gt1000  = Float32.(total_vols_gt1000),
     n_lakes_gt1000      = Int.(n_lakes_gt1000),
-    phi_profiles        = phi_profiles,
-    lake_profiles       = lake_profiles,
-    dist_profile        = Float32.(dist_profile),
-    z_bed_profile       = Float32.(z_bed_profile),
-    z_surf_profile      = Float32.(z_surf_profile),
+    #phi_profiles        = phi_profiles,
+    #lake_profiles       = lake_profiles,
+    #dist_profile        = Float32.(dist_profile),
+    #z_bed_profile       = Float32.(z_bed_profile),
+    #z_surf_profile      = Float32.(z_surf_profile),
 ))
 
 

@@ -308,5 +308,38 @@ function _profile_vals(r::Raster, pts::AbstractVector{<:Tuple};
     return out
 end
 
+using Rasters
+
+"""
+Export lakes with volume > vol_thresh to GeoTIFFs for QGIS.
+
+Writes:
+- <out_prefix>_lakes_vol_gt_<thresh>_mask.tif   (UInt8, 0/1)
+
+`template` should be a Raster aligned with the masks (e.g. thickness or lakes_free_surf).
+"""
+function export_big_lake_masks!(
+    template::Raster,
+    analysis::LakeAnalysisResult,
+    out_prefix::String;
+    vol_thresh::Float64 = 1000.0
+)
+    big_inds = findall(v -> v > vol_thresh, analysis.stats.volume)
+    n_big = length(big_inds)
+    # Preallocate arrays on the template grid
+    combined = falses(size(template))
+    id = Int32(1)
+    for label in big_inds
+        mask = analysis.lake_masks[label]
+        combined .|= mask
+        id += 1
+    end
+    out_mask   = rebuild(template; data = UInt8.(combined))
+    tif_mask   = out_prefix * "_lakes_free_vol_gt_$(Int(vol_thresh)).tif"
+    write(tif_mask, out_mask; force=true)
+    println("  ✅ Exported big-lake masks ($(n_big) lakes) to:")
+    println("     - $tif_mask")
+    return (tif_mask=tif_mask, n_big=n_big)
+end
 
 

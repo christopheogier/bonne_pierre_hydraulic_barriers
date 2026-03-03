@@ -182,6 +182,11 @@ plot_lake_depth(
 )
 
 
+
+write(joinpath(output_dir,
+    "stochastic_allunc_N$(N)_$(name)_h$(min_depth)_vol$(Int(V_thr_plot)).tif"),lake_depth_mean_big;force = true)
+println("✅ Saved stochastic lake depth raster (WP>1000) to disk.")
+
 # ======================================================================================
 # --- Boxplots (kept as-is)
 # ======================================================================================

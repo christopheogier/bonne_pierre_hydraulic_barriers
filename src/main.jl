@@ -191,6 +191,8 @@ for min_depth in min_depths
 
                 # Optionally collect their masks (outlines) from analysis.lake_masks
                 big_masks = [analysis.lake_masks[label] for label in big_inds]
+                # Export masks for QGIS (binary + labeled GeoTIFF)
+                export_big_lake_masks!(thickness, analysis, out_prefix; vol_thresh = vol_thresh)
 
                 df = DataFrame(
                     run                       = run.name,

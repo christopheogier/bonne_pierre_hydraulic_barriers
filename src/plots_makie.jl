@@ -129,6 +129,14 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
     # 20m contour lines
     contour!(ax, x, y, Z; levels=range(vmin, stop=vmax, step=20), linewidth=0.5, color=:black)
 
+    # --- GPR flight/path lines ---
+    gpr_lines_path = "/scratch-3/cogier/data/BonnePierre_input/GPR_lines_merged_L93.shp" # hard coded flight paths
+    if isfile(gpr_lines_path)
+        _overlay_gpr_lines!(ax, gpr_lines_path; linecolor=(:grey, 0.8), lw=1.5)
+    else
+        @warn "GPR lines shapefile not found: $gpr_lines_path"
+    end
+
     if glacier_outline_raster !== nothing
         x_ice, y_ice, Z_ice = get_axes_and_matrix(glacier_outline_raster)
         #contour!(ax, x_ice, y_ice, Z_ice; levels=0.1:0.1, linewidth=1.0, color=:black)
@@ -175,6 +183,28 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
     end
 
     return fig
+end
+
+function _overlay_gpr_lines!(ax, shp_path::String; linecolor=(:grey, 0.9), lw=1.0)
+    table = Shapefile.Table(shp_path)
+
+    for geom in table.geometry
+        # Handle LineString / MultiLineString-like geometries
+        try
+            for subgeom in GeoInterface.getgeom(geom)
+                coords = GeoInterface.coordinates(subgeom)
+                xs = first.(coords)
+                ys = last.(coords)
+                lines!(ax, xs, ys; color=linecolor, linewidth=lw)
+            end
+        catch
+            # Fallback for simple LineString geometries
+            coords = GeoInterface.coordinates(geom)
+            xs = first.(coords)
+            ys = last.(coords)
+            lines!(ax, xs, ys; color=linecolor, linewidth=lw)
+        end
+    end
 end
 
 # --- Hillshade helper (simple finite differences) ---

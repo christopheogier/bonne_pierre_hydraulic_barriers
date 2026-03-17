@@ -532,7 +532,7 @@ function plot_lake_depth(
 
                 hm_area = heatmap!(ax, x, y, Z_area_clipped;
                     colormap   = cmap_area,
-                    colorrange = (area_min, area_max)
+                    colorrange = (area_min, area_max), alpha = 0.8
                 )
             end
         else
@@ -554,13 +554,13 @@ function plot_lake_depth(
     # --- Optional depressions overlay ---
     if depressions_path !== nothing
         _overlay_depressions!(ax, depressions_path;
-            linecolor = (:green, 0.8),
-            fillcolor = (:green, 0.2),
+            linecolor = (:green, 1),
+            fillcolor = (:green, 0.1),
             lw        = 1.0
         )
     end
 
-    # --- Lake depth heatmap (viridis) ---
+    # --- Lake depth heatmap ---
     hm_lake = nothing
     if lakes !== nothing
         _, _, Z = get_axes_and_matrix(lakes)
@@ -575,8 +575,8 @@ function plot_lake_depth(
 
         # Draw lakes on top of upslope area
         hm_lake = heatmap!(ax, x, y, Z_lake;
-            colormap   = :viridis,
-            colorrange = (vmin, vmax)
+            colormap   = Reverse(:viridis) , # Reverse(:ice)
+            colorrange = (vmin, vmax), alpha = 0.9
         )
     end
 
@@ -591,7 +591,7 @@ function plot_lake_depth(
         for (_, mask) in analysis.lake_masks
             if any(mask)
                 labeled = Int.(mask)
-                contour!(ax, x, y, labeled; levels=[0.5], color=:purple, linewidth=1)
+                contour!(ax, x, y, labeled; levels=[0.5], color=:black, linewidth=1)
             end
         end
     end
@@ -673,7 +673,7 @@ function plot_lake_depth(
       # --- GPR water-pick evidence points (only in stochastic plots) ---
     picks_path = "/scratch-3/cogier/data/BonnePierre_input/Water_picks_gpr_evidence.csv"  # hard coded
     if stochastic 
-        gpr_color =:darkblue
+        gpr_color = :black
     else
         gpr_color = :black
     end
@@ -683,7 +683,7 @@ function plot_lake_depth(
         y_picks = Float64.(picks_df.ycoord)
 
         scatter!(ax, x_picks, y_picks;
-                    color = (gpr_color, 0.4) ,
+                    color = (gpr_color, 1.0) ,
                     marker = :circle,
                     markersize = 3,
                     label = "GPR water evidence")

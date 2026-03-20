@@ -50,7 +50,7 @@ summaries = DataFrame()
 for min_depth in min_depths
     for smooth_coeff in smooth_coeffs
         for fill_vol in filling_volume
-            for run in runs[2:2]
+            for run in runs[3:3]    # 2 for June, 3 for october
 
                 println("\n🔷 Processing run: $(run.name), fill_vol=$(fill_vol)")
 

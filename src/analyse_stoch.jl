@@ -237,10 +237,18 @@ ax2  = Axis(fig2[1, 1];
     xticks  = (1:3, Ls_labels),
 )
 # --- enforce identical y-scale than total boxplots ---
-ylims!(ax2, 0.0, 8e5)
 
-# ticks at 0,2,4,6 (×10⁵)
-ytick_vals   = [0.0, 2e5, 4e5, 6e5, 8e5]
+cols = [:lightsteelblue, :dodgerblue, :royalblue]
+for (i, v) in enumerate(Ls_vols)
+v_scaled = v ./ 1e3
+xi = fill(i, length(v_scaled))
+
+boxplot!(ax2, xi, v_scaled; color=cols[i], width=0.98, show_outliers=true)
+scatter!(ax2, [i], [mean(v_scaled)]; color=:black, marker=:cross, markersize=8)
+end
+
+    ylims!(ax2, 0.0, 800.0)
+    ax2.yticks = (0:200:800, string.(0:200:800))
 
 cols = [:lightsteelblue, :dodgerblue, :royalblue]
 for (i, v) in enumerate(Ls_vols)

@@ -64,6 +64,34 @@ function finite_minmax(Z)
     return minimum(vals), maximum(vals)
 end
 
+function colorbar_ticks_with_step(vmin, vmax, step; round_endpoints=true)
+    vmin_tick = round_endpoints ? round(vmin) : vmin
+    vmax_tick = round_endpoints ? round(vmax) : vmax
+
+    tick_min = ceil(vmin_tick / step) * step
+    tick_max = floor(vmax_tick / step) * step
+
+    ticks = Float64[]
+
+    # always keep the lower endpoint
+    push!(ticks, vmin_tick)
+
+    # regular internal ticks
+    if tick_min <= tick_max
+        append!(ticks, collect(tick_min:step:tick_max))
+    end
+
+    # always keep the upper endpoint
+    if !isapprox(ticks[end], vmax_tick; atol=1e-9)
+        push!(ticks, vmax_tick)
+    end
+
+    ticks = unique(sort(ticks))
+    labels = string.(Int.(round.(ticks)))
+
+    return ticks, labels, vmin_tick, vmax_tick
+end
+
 
 function plot_ice_thickness(rt; gpr_points=nothing, savepath=nothing)
     # Mask zero or negative thickness
@@ -79,10 +107,17 @@ function plot_ice_thickness(rt; gpr_points=nothing, savepath=nothing)
     y_max = y[max_idx[2]]
 
     fig = Figure(size=(800, 600))
-    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)")#, title="Ice thickness (m)")
+    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="East (m)", ylabel="North (m)")#, title="Ice thickness (m)")
+
+    ticks_vals, ticks_labels, cbmin, cbmax = colorbar_ticks_with_step(0, vmax, 50)
 
     # Heatmap and contours
-    hm = heatmap!(ax, x, y, Z; colormap=Reverse(:ice), colorrange=(0, vmax))
+    hm = heatmap!(ax, x, y, Z;
+        colormap   = Reverse(:ice),
+        colorrange = (cbmin, cbmax)
+    )
+
+    
     # ice thickness countour
     contour!(ax, x, y, Z; levels=0:20:vmax, color=:black)
     glacier_mask = .!isnan.(Z_full) .& (Z_full .> 0)
@@ -98,11 +133,6 @@ function plot_ice_thickness(rt; gpr_points=nothing, savepath=nothing)
         #Legend(fig[1, 1], [sc], ["GPR points"], framevisible=false, patchsize=(15,15), labelsize=10)
 
     end
-
-    # Generate nice intermediate ticks between vmin and vmax, e.g. 5 ticks total
-    nticks = 5
-    ticks_vals = range(0, vmax, length=nticks)
-    ticks_labels = string.(Int.(round.(ticks_vals)))
 
     # Put colorbar into fig[1, 2], with the same height as ax by linking its height
     cb = Colorbar(fig[1, 2], hm; ticks=(ticks_vals, ticks_labels), label="Ice thickness (m)")
@@ -123,9 +153,14 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
     vmin, vmax = finite_minmax(Z)
 
     fig = Figure(size=(800, 600))
-    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)")#, title="Bedrock elevation (m a.s.l.)")
+    ax = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="East (m)", ylabel="North (m)")#, title="Bedrock elevation (m a.s.l.)")
 
-    hm = heatmap!(ax, x, y, Z; colormap=:heat, colorrange=(vmin, vmax))
+    ticks_vals, ticks_labels, cbmin, cbmax = colorbar_ticks_with_step(vmin, vmax, 300)
+
+    hm = heatmap!(ax, x, y, Z;
+        colormap   = :heat,
+        colorrange = (cbmin, cbmax)
+    )
     # 20m contour lines
     contour!(ax, x, y, Z; levels=range(vmin, stop=vmax, step=20), linewidth=0.5, color=:black)
 
@@ -160,16 +195,12 @@ function plot_bedrock(rt; gpr_points=nothing, savepath=nothing, glacier_outline_
         scatter!(ax, x_picks, y_picks;
                     color = (:blue, 0.4) ,
                     marker = :circle,
-                    markersize = 3,
+                    markersize = 4,
                     label = "GPR water evidence")
     else
             @warn "skipping GPR evidence points."
     end
 
-    # Generate nice intermediate ticks between vmin and vmax, e.g. 5 ticks total
-    nticks = 5
-    ticks_vals = range(vmin, vmax, length=nticks)
-    ticks_labels = string.(Int.(round.(ticks_vals)))
 
     # Put colorbar into fig[1, 2], with the same height as ax by linking its height
     cb = Colorbar(fig[1, 2], hm; ticks=(ticks_vals, ticks_labels), label="Elevation (m a.s.l.)")
@@ -193,7 +224,7 @@ function _overlay_gpr_lines!(ax, shp_path::String; linecolor=(:grey, 0.9), lw=1.
         try
             for subgeom in GeoInterface.getgeom(geom)
                 coords = GeoInterface.coordinates(subgeom)
-                xs = first.(coords)
+                xs = first.(coords) .- 10 ## compensate the inacuracy of coordinates transofrmation (~10 m shift)
                 ys = last.(coords)
                 lines!(ax, xs, ys; color=linecolor, linewidth=lw)
             end
@@ -274,16 +305,24 @@ function plot_surface_hillshade(surface::Raster;
     hs = hillshade(Zs, x, y)
 
     fig = Figure(size=(800, 600))
-    ax  = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="X (m)", ylabel="Y (m)")
+    ax  = Axis(fig[1, 1]; aspect=DataAspect(), xlabel="East (m)", ylabel="North (m)")
+    
 
     hm = heatmap!(ax, x, y, hs; colormap=:grays, colorrange=(0, 1))
+    # --- Dummy colorbar to match layout ---
+    cb = Colorbar(fig[1, 2], hm;
+        ticks = ([0, 0.5, 1.0], ["0", "0.5", "1.0"]),  
+        label = ""
+    )
+    cb.height[] = 350
+
 
     # --main lake mask overlay (hard-coded shapefile) ---
     lake_mask_path = "/scratch-3/cogier/data/BonnePierre_input/Lac_plein.shp"
     if isfile(lake_mask_path)
         _overlay_depressions!(ax, lake_mask_path;
-            linecolor = (:green, 0.9),
-            fillcolor = (:green, 0.25),
+            linecolor = (:white, 1),
+            fillcolor = (:green, 0.6),
             lw        = 1.0
         )
     else
@@ -345,23 +384,21 @@ function plot_uncertainty_bed(
     if isnothing(r2)
         vmin = 0
         vmax = maximum(finite_vals1)
-        vmax = ceil(vmax)  # nicer upper bound
 
-        cmap = cgrad(:reds)  # red-toned colormap
-        ticks_vals = collect(range(vmin, vmax; length=5))
-        ticks_labels = string.(Int.(round.(ticks_vals)))
+        cmap = cgrad(:jet, rev=false)
+        ticks_vals, ticks_labels, cbmin, cbmax = colorbar_ticks_with_step(vmin, vmax, 5)
 
         fig = Figure(size=(800, 600))
         ax = Axis(fig[1, 1];
             aspect = DataAspect(),
-            xlabel = "X (m)",
-            ylabel = "Y (m)",
+            xlabel = "East (m)",
+            ylabel = "North (m)",
             title = subtitle1
         )
 
         hm = heatmap!(ax, x, y, Z1;
             colormap = cmap,
-            colorrange = (vmin, vmax)
+              colorrange = (cbmin, cbmax)
         )
 
         # --- lines of uncertainty ---
@@ -381,6 +418,16 @@ function plot_uncertainty_bed(
         if title != ""
             Label(fig[0, :], title; fontsize=12, font=:bold)
         end
+
+        # --- Glacier outline ---
+        glacier_mask = Int.(r1 .> 0)
+        contour!(ax, x, y, glacier_mask;
+        levels    = [0.5],
+        color     = :black,
+        linewidth = 1.0
+        )
+
+         # --- Optional: current lake mask outline (hard-coded shapefile) ---
 
         save(savepath, fig; px_per_unit=4)
         println("✅ Saved single uncertainty plot to: $savepath")
@@ -481,8 +528,8 @@ function plot_lake_depth(
     fig = Figure(size=(800, 600))
     ax = Axis(fig[1, 1];
     aspect = DataAspect(),
-    xlabel = "X (m)",
-    ylabel = "Y (m)",
+    xlabel = "East (m)",
+    ylabel = "North (m)",
     #title  = "Water pocket depth (m > $(min_depth))",
 
     titlesize = 18,
@@ -644,14 +691,16 @@ function plot_lake_depth(
 
     # --- Colorbar for lake depth (right) ---
     if hm_lake !== nothing
-        cr = hm_lake.attributes.colorrange[]
-        nticks      = 4
-        ticks_vals  = range(cr[1], cr[2], length=nticks)
-        ticks_labels = string.(Int.(round.(ticks_vals)))
+        # use same vmin / vmax as heatmap
+        ticks_vals, ticks_labels, cbmin, cbmax = colorbar_ticks_with_step(vmin, vmax, 10)
+
+        # IMPORTANT: enforce same limits as ticks
+        hm_lake.colorrange[] = (cbmin, cbmax)
+
         Colorbar(fig[1, 2], hm_lake;
             ticks  = (ticks_vals, ticks_labels),
-            label  = "Water pockets height (m)",
-            height = 200 ## PUT 300 for SINGLE PLOT
+            label  = "Water-pocket height (m)",
+            height = 200
         )
     end
 
@@ -1154,17 +1203,11 @@ function plot_lake_volume_boxplot(
     fig = Figure(size = (420, 420))
 
     ax = Axis(fig[1, 1];
-        ylabel = "Total water pockets volume (m³)",
+        ylabel = "Total water pocket volume (×10³ m³)",
         xlabel = "Field perturbed",
-        xticks  = (centers, labels),
-        yscale  = logscale ? log10 : identity
+        xticks = (centers, labels),
+        yscale = logscale ? log10 : identity
     )
-
-    # --- force identical y-scale ---
-    ylims!(ax, 0.0, 8e5)
-
-    ytick_vals   = range(0.0, 8e5; length=5)
-
 
     if plot_largest
         # --- Two-category plot: total & largest ---
@@ -1174,38 +1217,49 @@ function plot_lake_volume_boxplot(
         pos_tot = centers .- offset
         pos_lrg = centers .+ offset
 
-        x_tot = vcat([fill(pos_tot[i], length(v)) for (i,v) in enumerate(lake_vols)]...)
-        y_tot = vcat(lake_vols...)
+        # scale to 10^3 m^3
+        lake_vols_scaled = [v ./ 1e3 for v in lake_vols]
+        largest_lake_vols_scaled = [v ./ 1e3 for v in largest_lake_vols]
 
-        x_lrg = vcat([fill(pos_lrg[i], length(v)) for (i,v) in enumerate(largest_lake_vols)]...)
-        y_lrg = vcat(largest_lake_vols...)
+        x_tot = vcat([fill(pos_tot[i], length(v)) for (i, v) in enumerate(lake_vols_scaled)]...)
+        y_tot = vcat(lake_vols_scaled...)
 
-        boxplot!(ax, x_tot, y_tot; color=:dodgerblue, width=w)
-        boxplot!(ax, x_lrg, y_lrg; color=:orange, width=w)
+        x_lrg = vcat([fill(pos_lrg[i], length(v)) for (i, v) in enumerate(largest_lake_vols_scaled)]...)
+        y_lrg = vcat(largest_lake_vols_scaled...)
 
-        scatter!(ax, pos_tot, [mean(v) for v in lake_vols];
-                 color=:black, marker=:cross, markersize=9)
-        scatter!(ax, pos_lrg, [mean(v) for v in largest_lake_vols];
-                 color=:black, marker=:cross, markersize=9)
+        boxplot!(ax, x_tot, y_tot; color = :dodgerblue, width = w)
+        boxplot!(ax, x_lrg, y_lrg; color = :orange, width = w)
 
-        lines!(ax, [NaN], [NaN]; color=:dodgerblue, label="Total pockets volume")
-        lines!(ax, [NaN], [NaN]; color=:orange,     label="Largest pocket volume")
+        scatter!(ax, pos_tot, [mean(v) for v in lake_vols_scaled];
+                 color = :black, marker = :cross, markersize = 9)
+        scatter!(ax, pos_lrg, [mean(v) for v in largest_lake_vols_scaled];
+                 color = :black, marker = :cross, markersize = 9)
+
+        lines!(ax, [NaN], [NaN]; color = :dodgerblue, label = "Total water pocket volume")
+        lines!(ax, [NaN], [NaN]; color = :orange, label = "Largest water pocket volume")
 
     else
         # --- Single-category plot: total only ---
         w = 0.5
         pos_tot = centers
 
-        x_tot = vcat([fill(pos_tot[i], length(v)) for (i,v) in enumerate(lake_vols)]...)
-        y_tot = vcat(lake_vols...)
+        # scale to 10^3 m^3
+        lake_vols_scaled = [v ./ 1e3 for v in lake_vols]
 
-        boxplot!(ax, x_tot, y_tot; color=:dodgerblue, width=w)
+        x_tot = vcat([fill(pos_tot[i], length(v)) for (i, v) in enumerate(lake_vols_scaled)]...)
+        y_tot = vcat(lake_vols_scaled...)
 
-        scatter!(ax, pos_tot, [mean(v) for v in lake_vols];
-                 color=:black, marker=:cross, markersize=9)
+        boxplot!(ax, x_tot, y_tot; color = :dodgerblue, width = w)
 
-        lines!(ax, [NaN], [NaN]; color=:dodgerblue, label="Total pockets volume")
+        scatter!(ax, pos_tot, [mean(v) for v in lake_vols_scaled];
+                 color = :black, marker = :cross, markersize = 9)
+
+        lines!(ax, [NaN], [NaN]; color = :dodgerblue, label = "Total water pocket volume")
     end
+
+    # fixed y-scale in 10^3 m^3
+    ylims!(ax, 0.0, 800.0)
+    ax.yticks = (0:200:800, string.(0:200:800))
 
     save(savepath, fig)
     println("✅ Saved boxplot to: $savepath")

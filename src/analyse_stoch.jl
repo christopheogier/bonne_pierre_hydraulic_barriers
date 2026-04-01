@@ -17,7 +17,8 @@ using .LakeAnalysis
 # ======================================================================================
 # --- Params / Paths ---
 # ======================================================================================
-N = 1000                          # number of realizations
+N = 1000
+                          # number of realizations
 name = "2024_June"              # or "2024_October"
 datadir_WWFS_input = "/scratch-3/cogier/data/BonnePierre_input/WWFS_input"
 output_dir         = "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis"
@@ -56,6 +57,29 @@ aggr6 = deserialize(joinpath(output_dir, "aggr6_n$(N)_$(name).jls")) # flotation
 aggr7 = deserialize(joinpath(output_dir, "aggr7_n$(N)_$(name).jls")) # flotation only, l = 50m
 aggr8 = deserialize(joinpath(output_dir, "aggr8_n$(N)_$(name).jls")) # flotation only, l = 1000m
 
+# --- Deterministic surface-sensitivity distribution (used instead of aggr3) ---
+df_surf = CSV.read(
+    joinpath(output_dir, "WWFS_lake_fs_summary.csv"),
+    DataFrame
+)
+
+df_surf = df_surf[df_surf.run .== name, :]
+sort!(df_surf, :smooth_surface_ice_fraction)
+
+surface_vols = collect(df_surf.total_volume_m3)
+surface_largest_vols = collect(df_surf.largest_single_volume_m3)
+
+# If your CSV already contains this column, use it.
+# Otherwise compute it later in main.jl and re-export the CSV.
+if :total_volume_gt1000_m3 in names(df_surf)
+    surface_vols_gt1000 = collect(df_surf.total_volume_gt1000_m3)
+else
+    @warn "Column total_volume_gt1000_m3 not found in WWFS_lake_fs_summary.csv. Using total_volume_m3 as placeholder."
+    surface_vols_gt1000 = collect(df_surf.total_volume_m3)
+end
+
+##
+
 aggr_labels = [
     "all unc.",
     "bed. unc.",
@@ -67,7 +91,7 @@ aggr_labels = [
     "f. unc. (L=1000 m)",
 ]
 
-aggr_list = [aggr1, aggr2, aggr3, aggr4, aggr5, aggr6, aggr7, aggr8]
+aggr_list = [aggr1, aggr2, aggr3,aggr4, aggr5, aggr6, aggr7, aggr8]
 
 # pick the case for maps/plotting
 aggr_map = aggr_list[case_for_maps]
@@ -188,22 +212,23 @@ write(joinpath(output_dir,
 println("✅ Saved stochastic lake depth raster (WP>1000) to disk.")
 
 # ======================================================================================
-# --- Boxplots (kept as-is)
+# --- Boxplots
 # ======================================================================================
 labels = ["none", "bedrock", "surface", "f", "all"]
 
+# Use deterministic smoothing ensemble for "surface" instead of aggr3
 lake_vols = [
-    aggr5.lake_fs_vol,
-    aggr2.lake_fs_vol,
-    aggr3.lake_fs_vol,
-    aggr4.lake_fs_vol,
-    aggr1.lake_fs_vol,
+    aggr5.lake_fs_vol,      # none
+    aggr2.lake_fs_vol,      # bedrock
+    surface_vols,           # surface (deterministic smoothing sweep)
+    aggr4.lake_fs_vol,      # f
+    aggr1.lake_fs_vol,      # all
 ]
 
 lake_vols_gt1000 = [
     aggr5.lake_fs_vol_gt1000,
     aggr2.lake_fs_vol_gt1000,
-    aggr3.lake_fs_vol_gt1000,
+    surface_vols_gt1000,
     aggr4.lake_fs_vol_gt1000,
     aggr1.lake_fs_vol_gt1000,
 ]
@@ -211,10 +236,22 @@ lake_vols_gt1000 = [
 largest_lake_vols = [
     aggr5.largest_lake_fs_vol,
     aggr2.largest_lake_fs_vol,
-    aggr3.largest_lake_fs_vol,
+    surface_largest_vols,
     aggr4.largest_lake_fs_vol,
     aggr1.largest_lake_fs_vol,
 ]
+
+plot_lake_volume_boxplot(
+    lake_vols, lake_vols_gt1000,
+    labels, joinpath(output_dir, "boxplot_total_vs_largest_$(name).png");
+    plot_largest = false,
+    logscale = false
+)
+
+plot_surface_smoothing_boxplot(
+    "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis/WWFS_lake_fs_summary.csv",
+    joinpath(output_dir, "boxplot_surface_smoothing.png")
+)
 
 plot_lake_volume_boxplot(
     lake_vols, lake_vols_gt1000,

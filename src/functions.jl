@@ -160,23 +160,27 @@ function unc_propagate(dist_raster::Raster) # so that float or integer works
     return u_std
 end
 
-function surface_uncertainty_from_smoothing(surface, bed, smooth_coeff,mask) # half-window (per your current convention) 
+function surface_uncertainty_from_smoothing(surface, bed, smooth_coeff, mask)
 
-    smooth_half_window = smooth_coeff / 2 
+    smooth_half_window = smooth_coeff / 2
 
-    # Coordinates from Raster.jl 
-    x, y = dims(surface) 
+    x, y = dims(surface)
 
-    # below y = x is a trick as WWFS.smooth_surface test: @assert dy==dx and here dy = -1 (dx=1) 
-    surface_smooth = WWFS.smooth_surface(x, x, surface, bed, smooth_half_window, mask); 
+    surface_smooth = WWFS.smooth_surface(x, x, surface, bed, smooth_half_window, mask)
 
-    # Deterministic one-sigma field 
-    std = abs.(surface .- surface_smooth); 
+    # full difference between raw and smoothed
+    diff = surface .- surface_smooth
 
-    # If considering the "true" surface to be between both, take their average 
-    avg= ((surface .+ surface_smooth) ./ 2) .- surface_smooth; #err = ±1σ ≈ 68%
+    # half difference = plausible amplitude around midpoint
+    avg = diff ./ 2
 
-    return (smooth = surface_smooth, std = std, avg = avg) 
+    # midpoint between raw and smoothed
+    mid = (surface .+ surface_smooth) ./ 2
+
+    # full difference kept if needed for diagnostics only
+    std = abs.(diff)
+
+    return (smooth = surface_smooth, std = std, avg = avg, mid = mid)
 end
 
 """
@@ -340,6 +344,64 @@ function export_big_lake_masks!(
     println("  ✅ Exported big-lake masks ($(n_big) lakes) to:")
     println("     - $tif_mask")
     return (tif_mask=tif_mask, n_big=n_big)
+end
+
+function make_fns_surface_ensemble(
+    dx,
+    surface_ensemble,
+    beddem, beddem_uc,
+    floatfrac, floatfrac_uc,
+    waterinput, waterinput_uc,
+    ctch_sinks,
+    rmask;
+    gamma=[0, WWFS.GAMMA][1],
+    min_lake_depth=0.1,
+    rhow=WWFS.RHOW,
+    rhoi=WWFS.RHOI
+)
+    model(surf, bed, floatfrac, waterinput, gamma=gamma) = (
+        (; surf, bed, dx, floatfrac, waterinput),
+        WWFS.waterflows_subglacial(
+            surf, bed, dx, floatfrac, waterinput, rmask;
+            gamma,
+            drain_pits=true,
+            bnd_as_sink=true,
+            nan_as_sink=true,
+            rhow,
+            rhoi,
+            ctch_sinks
+        )
+    )
+
+    get_sample = let
+        beddem_grf_sampler    = WWFS.make_sampler(dx, beddem, beddem_uc)
+        floatfrac_grf_sampler = WWFS.make_sampler(dx, floatfrac, floatfrac_uc)
+        waterinput_grf_sampler = WWFS.make_sampler(dx, waterinput, waterinput_uc)
+
+        function ()
+            surf  = rand(surface_ensemble)
+            bed   = WWFS.make_field_realization(beddem, beddem_grf_sampler, beddem_uc)
+            float = WWFS.make_field_realization(floatfrac, floatfrac_grf_sampler, floatfrac_uc)
+            water = WWFS.make_field_realization(waterinput, waterinput_grf_sampler, waterinput_uc)
+            return surf, bed, float, water
+        end
+    end
+
+    aggregate = WWFS.make_fns(
+        dx,
+        surface_ensemble[1], zero_uc(),   # dummy surface, only used to build aggregate sizes
+        beddem, beddem_uc,
+        floatfrac, floatfrac_uc,
+        waterinput, waterinput_uc,
+        ctch_sinks,
+        rmask;
+        gamma=gamma,
+        min_lake_depth=min_lake_depth,
+        rhow=rhow,
+        rhoi=rhoi
+    )[3]
+
+    return model, get_sample, aggregate
 end
 
 

@@ -74,17 +74,19 @@ mask = bed_resamp .> 0
 ### Compute surface uncertainties due to smoothing 
 #(Determinstic error field)# one sigma standard deviation
 
-smooth_coeff = 0.1  # as total fraction of thickness (note that WWFS.smooth_surface uses half-window)
 
-# --- October 2024 ---
-oct = surface_uncertainty_from_smoothing(surface_2024_oct_resamp, bed_resamp, smooth_coeff, mask)
-surface_2024_oct_smooth   = oct.smooth
-surface_2024_oct_err_avg = oct.avg
+### Compute/store June surface ensemble for stochastic surface sampling
+# raw (0.0) already exists as surface_2024_june.tif
 
-# --- June 2024  ---
-jun = surface_uncertainty_from_smoothing(surface_2024_june, bed_resamp, smooth_coeff, mask)
-surface_2024_june_smooth   = jun.smooth
-surface_2024_june_err_avg = jun.avg
+smooth_coeffs = collect(0.1:0.1:1.0)  # 0.1, 0.2, ..., 1.0
+
+jun_surfaces = Dict{Float64, Raster}()
+
+for sc in smooth_coeffs
+    println("Computing June smoothed surface for smoothing coefficient = ", sc)
+    res = surface_uncertainty_from_smoothing(surface_2024_june, bed_resamp, sc, mask)
+    jun_surfaces[sc] = res.smooth
+end
 
 
 ### Compute GPR uncertainty maps 
@@ -200,8 +202,12 @@ write(joinpath(datadir_WWFS_input, "bedrock_err_interp_std_1m.tif"),u_std_interp
 write(joinpath(datadir_WWFS_input, "surface_2021_cr.tif"), surface_2021_cr,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_oct_resamp_1m.tif"), surface_2024_oct_resamp,force=true)
 write(joinpath(datadir_WWFS_input, "surface_2024_june.tif"), surface_2024_june,force=true)
-write(joinpath(datadir_WWFS_input, "surface_2024_oct_smooth_01.tif"), surface_2024_oct_smooth, force=true)
-write(joinpath(datadir_WWFS_input, "surface_2024_june_smooth_01.tif"), surface_2024_june_smooth, force=true)
-# average of resampled and smoothed DEM
-write(joinpath(datadir_WWFS_input, "surface_2024_oct_err_avg_01smooth.tif"), surface_2024_oct_err_avg, force=true)
-write(joinpath(datadir_WWFS_input, "surface_2024_june_err_avg_01smooth.tif"), surface_2024_june_err_avg, force=true)
+# June smoothed surface ensemble for stochastic surface sampling
+for sc in smooth_coeffs
+    tag = replace(@sprintf("%.1f", sc), "." => "")   # 0.1 -> "01", 1.0 -> "10"
+    write(
+        joinpath(datadir_WWFS_input, "surface_2024_june_smooth_$(tag).tif"),
+        jun_surfaces[sc],
+        force=true
+    )
+end

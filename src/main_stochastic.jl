@@ -9,6 +9,7 @@ const WWFS = WhereTheWaterFlowsSubglacially
 const WWF = WhereTheWaterFlows
 using Serialization
 using ProgressMeter
+using Printf
 
 
 
@@ -39,7 +40,7 @@ paths = if run_name == "2024_October"
 elseif run_name == "2024_June"
     Dict(
         :surface_raw   => joinpath(datadir_WWFS_input, "surface_2024_june.tif"),
-        :surface_smooth=> joinpath(datadir_WWFS_input, "surface_2024_june_smooth_01.tif"),
+        :surface_smooth_01=> joinpath(datadir_WWFS_input, "surface_2024_june_smooth_01.tif"),
         :surface_smooth_filled => "/scratch-3/cogier/data/BonnePierre_output/WWFS_analysis/2024_June_smoothed_surface_with_lakefilled.tif",
         :surface_err   => joinpath(datadir_WWFS_input, "surface_2024_june_err_avg_01smooth.tif"),
         :thickness     => joinpath(datadir_WWFS_input, "ice_thickness_2024_june.tif"),
@@ -48,10 +49,25 @@ elseif run_name == "2024_June"
 end
 
 surface_raw         = clean_raster(Raster(paths[:surface_raw]))
-surface_smooth  = clean_raster(Raster(paths[:surface_smooth])) # change to :surface_smooth_filled if needed
+surface_smooth_01  = clean_raster(Raster(paths[:surface_smooth_01])) # change to :surface_smooth_filled or _1thick if needed
 surface_err     = clean_raster(Raster(paths[:surface_err]))
 thickness       = clean_raster(Raster(paths[:thickness]))
 beddem          = clean_raster(Raster(paths[:bedrock]))
+
+# --- Precomputed June surface ensemble for stochastic surface uncertainty ---
+surface_smooth_coeffs = collect(0.0:0.1:1.0)
+
+surface_ensemble = Raster[]
+for sc in surface_smooth_coeffs
+    if sc == 0.0
+        push!(surface_ensemble, surface_raw)
+    else
+        tag = replace(@sprintf("%.1f", sc), "." => "")   # 0.1 -> "01", 1.0 -> "10"
+        push!(surface_ensemble,
+            clean_raster(Raster(joinpath(datadir_WWFS_input, "surface_2024_june_smooth_$(tag).tif")))
+        )
+    end
+end
 
 
 #load uncertainties
@@ -105,18 +121,20 @@ corr_length_bed = range_bed / sqrt(2)  # m = 175m
 # Gaussian Model: Practical range ≈ sqrt(3) x ℓ​ = 1.73 x l
 # Exponential Model: Practical range ≈ 3 x ℓ​
 # Spherical Model> range ≈ 0.66 x l
-corr_length_surf = 5 #range_surf / sqrt(3)      # placeholder for DEM error corr. length
+# corr_length_surf = 5
+# sensitivity for review:
+#corr_length_surf = 5 #range_surf / sqrt(3)      # placeholder for DEM error corr. length
 
 
 
 # Input fields (already loaded), but also convert in float for WWFS
-surfdem = surface_smooth
+surfdem = surface_smooth_01  # or surface_smooth_01, depending on which one you want to use
 rmask     = thickness .> 0
 floatfrac = 1 .* ones(size(surfdem))
 source    = ones(size(surfdem)) # what is "source" ?
 
 # Uncertainties
-surfdem_uc   = Uncertainty(absuc=surface_err, reluc=0.0, correlation_length=corr_length_surf, covariance_fn=cov_fn )  
+surfdem_uc = Uncertainty(absuc=0.0, reluc=0.0)   # or zero_uc()
 beddem_uc    = Uncertainty(absuc=bed_err_std, reluc=0.0, correlation_length=corr_length_bed, covariance_fn=cov_fn)
 floatfrac_uc = Uncertainty(absuc=0.0, reluc=0.1, correlation_length=corr_length_f,covariance_fn=cov_fn) 
 #  f = 0.6 to 1.11 in Chu et aL 2016 (greenland)
@@ -155,95 +173,121 @@ cases = [
 
 # --- Run all cases and save as aggr1..aggr8 ---
 for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
-#i=8
-#(surf_uc, bed_uc, float_uc_i)=cases[8]  # for testing a single case
+    (surf_uc, bed_uc, float_uc_i)=cases[i]  # for testing a single case
 
-    # Extract raster grid
-    xdim, ydim = dims(surfdem)
-    dx = step(xdim)
+        # Extract raster grid
+        xdim, ydim = dims(surfdem)
+        dx = step(xdim)
 
-    # --- SINKS : Define special catchment point  ---
-    x0,y0 = 962468.722,6431539.971
-    i0, j0 = coord_to_index(surface_smooth, x0, y0)
-    println("Pixel index: ", (i0, j0))
+        # --- SINKS : Define special catchment point  ---
+        x0,y0 = 962468.722,6431539.971
+        i0, j0 = coord_to_index(surface_smooth_01, x0, y0)
+        println("Pixel index: ", (i0, j0))
 
-    sink_areas = (point = [CartesianIndex(i0, j0)])  # single-pixel sink
-    #sink_areas = (outlet = [CartesianIndices((1:10, 1:length(ydim)))[:],CartesianIndices((1:10, 1:(length(ydim)÷2)))[:]])
+        sink_areas = (point = [CartesianIndex(i0, j0)])  # single-pixel sink
+        #sink_areas = (outlet = [CartesianIndices((1:10, 1:length(ydim)))[:],CartesianIndices((1:10, 1:(length(ydim)÷2)))[:]])
+        
+
+        println("🔄 Running WWFS stochastic for aggr$(i) on $run_name...")
+
+            if i == 1 # all uncertainties: random surface from ensemble + GRF on bed and flotation
+            
+                model, get_sample, aggregate = make_fns_surface_ensemble(
+                    dx,
+                    surface_ensemble,
+                    beddem, bed_uc,
+                    floatfrac, float_uc_i,
+                    source, source_uc,
+                    sink_areas,
+                    rmask
+                )
+            else
+                # all other cases unchanged
+                model, get_sample, aggregate = WWFS.make_fns(
+                    dx,
+                    surfdem,  surf_uc,
+                    beddem,   bed_uc,
+                    floatfrac, float_uc_i,
+                    source,   source_uc,
+                    sink_areas,
+                    rmask
+                )
+            end
+        #former
+        """
+        model, get_sample, aggregate = WWFS.make_fns(
+            dx,
+            surfdem,  surf_uc,
+            beddem,   bed_uc,
+            floatfrac, float_uc_i,
+            source,   source_uc,
+            sink_areas,
+            rmask
+        )
+        """
+        
+        total_vols_all = Float64[] # per-realization total volume of all WPs 
+        largest_vols = Float64[]
+        total_vols_gt1000 = Float64[]   # per-realization total volume of *individual* WPs > 1000 m³
+        n_lakes_gt1000    = Int[]       # per-realization count of WPs > 1000 m³
+        phi_profiles  = Vector{Vector{Float32}}()
+        lake_profiles = Vector{Vector{Float32}}()
+
+        vol_thr = 1000.0  # m³
+
+        p = Progress(N; desc="analyze_lakes (aggr$(i))", dt=10.0)  # dt = refresh every ~1s
+
+        for _ in 1:N
+            s = get_sample()
+            _, output = model(s...)
+            lakes_free_surf = output[3][2]
+            phi             = output[2][4]
+
+            # 1) lake volumes (NO depth threshold anymore)
+            analysis = analyze_lakes(lakes_free_surf, thickness; min_depth=min_depth)
+            push!(largest_vols, analysis.LargestLake.volume)
+
+            vols = analysis.stats.volume
+            # total volume of all WP
+            push!(total_vols_all, sum(vols))
+            # total volume of individual WPs > 1000 m³
+            inds = findall(>(vol_thr), vols)                 # indices of *individual* lakes > 1000 m³
+            push!(total_vols_gt1000, sum(vols[inds]))        # sum of those individual lakes only
+            push!(n_lakes_gt1000, length(inds))              # how many such lakes
+
+            # 2) profiles along A→B
+            #phi_r  = Raster(phi,             dims(thickness))
+            #lake_r = Raster(lakes_free_surf, dims(thickness))
+
+            #push!(phi_profiles,  Float32.(_profile_vals(phi_r,  pts_profile)))
+            #push!(lake_profiles, Float32.(_profile_vals(lake_r, pts_profile)))
+
+            next!(p)  # <- updates bar + ETA
+        end
+
+        # Aggregate maps/statistics over N runs
+        aggr = map_mc(model, get_sample, aggregate, N)
+
+        
+    aggr = merge(aggr, (
+        largest_lake_fs_vol = Float32.(largest_vols),
+        lake_fs_vol         = Float32.(total_vols_all),      
+        lake_fs_vol_gt1000  = Float32.(total_vols_gt1000),
+        n_lakes_gt1000      = Int.(n_lakes_gt1000),
+        #phi_profiles        = phi_profiles,
+        #lake_profiles       = lake_profiles,
+        #dist_profile        = Float32.(dist_profile),
+        #z_bed_profile       = Float32.(z_bed_profile),
+        #z_surf_profile      = Float32.(z_surf_profile),
+    ))
+
+
+        # Save with index-matched file name
+        outfile = joinpath(output_dir, "aggr$(i)_n$(N)_$(run_name).jls")
+        serialize(outfile, aggr)
+        println("✅ Saved $(outfile)")
+
     
-
-    println("🔄 Running WWFS stochastic for aggr$(i) on $run_name...")
-    model, get_sample, aggregate = WWFS.make_fns(
-        dx,
-        surfdem,  surf_uc,
-        beddem,   bed_uc,
-        floatfrac, float_uc_i,
-        source,   source_uc,
-        sink_areas,
-        rmask
-    )
-    
-    total_vols_all = Float64[] # per-realization total volume of all WPs 
-    largest_vols = Float64[]
-    total_vols_gt1000 = Float64[]   # per-realization total volume of *individual* WPs > 1000 m³
-    n_lakes_gt1000    = Int[]       # per-realization count of WPs > 1000 m³
-    phi_profiles  = Vector{Vector{Float32}}()
-    lake_profiles = Vector{Vector{Float32}}()
-
-    vol_thr = 1000.0  # m³
-
-    p = Progress(N; desc="analyze_lakes (aggr$(i))", dt=10.0)  # dt = refresh every ~1s
-
-    for _ in 1:N
-        s = get_sample()
-        _, output = model(s...)
-        lakes_free_surf = output[3][2]
-        phi             = output[2][4]
-
-        # 1) lake volumes (NO depth threshold anymore)
-        analysis = analyze_lakes(lakes_free_surf, thickness; min_depth=min_depth)
-        push!(largest_vols, analysis.LargestLake.volume)
-
-        vols = analysis.stats.volume
-        # total volume of all WP
-        push!(total_vols_all, sum(vols))
-        # total volume of individual WPs > 1000 m³
-        inds = findall(>(vol_thr), vols)                 # indices of *individual* lakes > 1000 m³
-        push!(total_vols_gt1000, sum(vols[inds]))        # sum of those individual lakes only
-        push!(n_lakes_gt1000, length(inds))              # how many such lakes
-
-        # 2) profiles along A→B
-        #phi_r  = Raster(phi,             dims(thickness))
-        #lake_r = Raster(lakes_free_surf, dims(thickness))
-
-        #push!(phi_profiles,  Float32.(_profile_vals(phi_r,  pts_profile)))
-        #push!(lake_profiles, Float32.(_profile_vals(lake_r, pts_profile)))
-
-        next!(p)  # <- updates bar + ETA
-    end
-
-    # Aggregate maps/statistics over N runs
-    aggr = map_mc(model, get_sample, aggregate, N)
-
-    
-aggr = merge(aggr, (
-    largest_lake_fs_vol = Float32.(largest_vols),
-    lake_fs_vol         = Float32.(total_vols_all),      
-    lake_fs_vol_gt1000  = Float32.(total_vols_gt1000),
-    n_lakes_gt1000      = Int.(n_lakes_gt1000),
-    #phi_profiles        = phi_profiles,
-    #lake_profiles       = lake_profiles,
-    #dist_profile        = Float32.(dist_profile),
-    #z_bed_profile       = Float32.(z_bed_profile),
-    #z_surf_profile      = Float32.(z_surf_profile),
-))
-
-
-    # Save with index-matched file name
-    outfile = joinpath(output_dir, "aggr$(i)_n$(N)_$(run_name).jls")
-    serialize(outfile, aggr)
-    println("✅ Saved $(outfile)")
-
-   
 
 end
 

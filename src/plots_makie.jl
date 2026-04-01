@@ -1265,3 +1265,27 @@ function plot_lake_volume_boxplot(
     println("✅ Saved boxplot to: $savepath")
     return fig
 end
+
+function plot_surface_smoothing_boxplot(csv_path, savepath)
+    df = CSV.read(csv_path, DataFrame)
+
+    # keep one run
+    df = df[df.run .== "2024_June", :]
+    vols = collect(df.total_volume_m3)
+
+    fig = Figure(size = (300, 420))
+    ax = Axis(fig[1, 1],
+        ylabel = "total water volume (m³)",
+        xticks = ([1], ["surface smoothing"])
+    )
+
+    boxplot!(ax, fill(1, length(vols)), vols; width=0.7, show_outliers=true)
+    scatter!(ax, [1], [mean(vols)]; color=:black, marker=:cross, markersize=10)
+
+    save(savepath, fig)
+    println("✅ Saved boxplot to: $savepath")
+    return fig
+end
+
+
+

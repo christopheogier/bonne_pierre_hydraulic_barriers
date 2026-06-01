@@ -98,7 +98,7 @@ n_profile = max(1, floor(Int, L/dx_profile)) + 1
 
 
 # --- Define uncertainty models ---
-N = 1000 # number of realization
+N = 50 # number of realization
 #kernel = "gauss"
 cov_fn = WWFS.GRF.gaussian_kernel #or WWFS.GRF.exponential_kernel
 range_bed = 247 #m, see XDEM variograms outputs
@@ -130,7 +130,7 @@ corr_length_bed = range_bed / sqrt(2)  # m = 175m
 # Input fields (already loaded), but also convert in float for WWFS
 surfdem = surface_smooth_01  # or surface_smooth_01, depending on which one you want to use
 rmask     = thickness .> 0
-floatfrac = 1 .* ones(size(surfdem))
+floatfrac = 0.85 .* ones(size(surfdem))  # test reviewer
 source    = ones(size(surfdem)) # what is "source" ?
 
 # Uncertainties
@@ -142,7 +142,7 @@ floatfrac_uc = Uncertainty(absuc=0.0, reluc=0.1, correlation_length=corr_length_
 source_uc    = Uncertainty()  
 
 # --- Helper for quickly defining flotation-uncertainty with a given corr. length ---
-float_uc(L) = Uncertainty(absuc=0.0, reluc=0.1, correlation_length=L, covariance_fn=cov_fn)
+float_uc(L) = Uncertainty(absuc=0.0, reluc=0.2, correlation_length=L, covariance_fn=cov_fn)
 zero_uc()   = Uncertainty(absuc=0.0, reluc=0.0)
 
 # Keep your existing definitions:

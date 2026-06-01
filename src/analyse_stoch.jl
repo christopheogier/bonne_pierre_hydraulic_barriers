@@ -17,7 +17,7 @@ using .LakeAnalysis
 # ======================================================================================
 # --- Params / Paths ---
 # ======================================================================================
-N = 1000
+N = 50
                           # number of realizations
 name = "2024_June"              # or "2024_October"
 datadir_WWFS_input = "/scratch-3/cogier/data/BonnePierre_input/WWFS_input"
@@ -169,6 +169,26 @@ df_summary = DataFrame(
     mean_largest_lake_m3 = means_largest,
     std_largest_lake_m3  = stds_largest
 )
+
+#append smoothing
+append!(df_summary, DataFrame(
+    label = ["surf. all smoothing"],
+    N_runs = [N],
+    min_depth_m = [min_depth],
+    smooth_surface_ice_fraction = [NaN], 
+    supragl_fill_fraction = [0],
+
+    mean_n_wp_gt1000 = [NaN],
+    std_n_wp_gt1000  = [NaN],
+
+    mean_total_volume_m3 = [mean(surface_vols)],
+    std_total_volume_m3  = [std(surface_vols)],
+    mean_total_volume_gt1000_m3 = [mean(surface_vols_gt1000)],
+    std_total_volume_gt1000_m3  = [std(surface_vols_gt1000)],
+
+    mean_largest_lake_m3 = [mean(surface_largest_vols)],
+    std_largest_lake_m3  = [std(surface_largest_vols)]
+))
 
 csv_path = joinpath(output_dir, "WWFS_stoch_volume_summary_$(name).csv")
 CSV.write(csv_path, df_summary)

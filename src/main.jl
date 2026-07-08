@@ -7,9 +7,10 @@ using Rasters
 using DataFrames
 using CSV
 using Statistics
-using WhereTheWaterFlowsSubglacially, WhereTheWaterFlows
-const WWFS = WhereTheWaterFlowsSubglacially
+using WhereTheWaterFlows
 const WWF = WhereTheWaterFlows
+const WWFS = WhereTheWaterFlows.Subglacially
+const WWFR = WhereTheWaterFlows.Randomly
 
 include("LakeAnalysis.jl")
 include("plots_makie.jl")
@@ -140,15 +141,15 @@ for min_depth in min_depths
 
 
                 # Run WWFS
-                ((areas, slen, dir, nout, nin, sinks, pits, c, bnds),
-                 (sc_locs, kappas, diro, phi),
-                 (lakes, lakes_free_surf),
-                 sinkout) = WWFS.waterflows_subglacial(
+                out = WWFS.waterflows_subglacial(
                     surface_fill, bedrock, dx;
                     gamma = [0, WWFS.GAMMA][1],
                     bnd_as_sink = true,
                     drain_pits = true
                 )
+                area = out.routing.area.total
+                phi = out.routing.phi
+                lakes_free_surf = out.lakes.depth_free_surface
 
                 # Output naming
                 fill_id = "_fill$(string(round(fill_vol)))"
@@ -201,14 +202,14 @@ for min_depth in min_depths
 
                     write(out_prefix * "_lakes_free.tif", lakes_free_surf; force=true)
                     write(out_prefix * "_phi.tif", phi; force=true)
-                    write(out_prefix * "_area.tif", areas[1]; force=true)
+                    write(out_prefix * "_area.tif", area; force=true)
                     #println("  ➤ Saved 'lakes_free_surf' and 'phi' rasters.")
 
             
                     # Plotting
                     
                     plot_lake_depth(lakes_free_surf,thickness,analysis,
-                        phi,out_prefix * "_lakes_free.png";min_depth = analysis.min_depth,show_all_lakes = true, area = areas[1],area_threshold = 1e5,
+                        phi,out_prefix * "_lakes_free.png";min_depth = analysis.min_depth,show_all_lakes = true, area = area,area_threshold = 1e5,
                     depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp",stochastic=false)
 
                         #depressions_path = "/scratch-3/cogier/data/BonnePierre_input/depressions_BP_20240830.shp"
@@ -217,7 +218,7 @@ for min_depth in min_depths
                     #plot_hydraulic_head(phi, out_prefix * "_phi.png")
 
                     # plot upslope area
-                    plot_hydraulic_head_and_flux(phi,areas[1],thickness,out_prefix * "_phi_flux.png";min_threshold = 1e5,max_threshold = 1e6)
+                    plot_hydraulic_head_and_flux(phi,area,thickness,out_prefix * "_phi_flux.png";min_threshold = 1e5,max_threshold = 1e6)
 
                      # plot supra-subglacial WP profiles in surface, smooth surf, phi, and lake_fs.
                     plot_profiles(

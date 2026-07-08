@@ -15,4 +15,7 @@ Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 Shapefile = "8e980c4a-a4fe-5da2-b3a7-4b4b0353a2f4"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 WhereTheWaterFlows = "ea906314-1493-4d22-a0af-f886a20c9fba"
-WhereTheWaterFlowsSubglacially = "4fed8954-9dc7-43ae-ad1d-8b0048040872"
+
+[compat]
+WhereTheWaterFlows = "0.12"
+julia = "1.12"

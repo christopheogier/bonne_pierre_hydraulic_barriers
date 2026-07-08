@@ -10,8 +10,10 @@ using Rasters
 using Statistics
 include("plots_makie.jl")
 include("functions.jl")
-using WhereTheWaterFlowsSubglacially
-const WWFS = WhereTheWaterFlowsSubglacially
+using WhereTheWaterFlows
+const WWF = WhereTheWaterFlows
+const WWFS = WhereTheWaterFlows.Subglacially
+const WWFR = WhereTheWaterFlows.Randomly
 
 
 """

@@ -2,9 +2,10 @@
 using Pkg
 Pkg.activate("/scratch-3/cogier/hydraulic_barriers/")
 using Rasters, DataFrames, CSV, Statistics
-using WhereTheWaterFlowsSubglacially, WhereTheWaterFlows
-const WWFS = WhereTheWaterFlowsSubglacially
+using WhereTheWaterFlows
 const WWF  = WhereTheWaterFlows
+const WWFS = WhereTheWaterFlows.Subglacially
+const WWFR = WhereTheWaterFlows.Randomly
 using Serialization
 using Base: summarysize
 

@@ -4,9 +4,10 @@ using ArchGDAL
 using Rasters
 using DataFrames
 using CSV
-using WhereTheWaterFlowsSubglacially, WhereTheWaterFlows
-const WWFS = WhereTheWaterFlowsSubglacially
+using WhereTheWaterFlows
 const WWF = WhereTheWaterFlows
+const WWFS = WhereTheWaterFlows.Subglacially
+const WWFR = WhereTheWaterFlows.Randomly
 using Serialization
 using ProgressMeter
 using Printf
@@ -100,7 +101,7 @@ n_profile = max(1, floor(Int, L/dx_profile)) + 1
 # --- Define uncertainty models ---
 N = 50 # number of realization
 #kernel = "gauss"
-cov_fn = WWFS.GRF.gaussian_kernel #or WWFS.GRF.exponential_kernel
+cov_fn = WWFR.gaussian_kernel # or WWFR.exponential_kernel
 range_bed = 247 #m, see XDEM variograms outputs
 #range_surf = 10 #m #variogram indicate glacier-size length, i expect it to be equal to the smoothing length scale
 corr_length_f = 100 #[10,100,1000] # ARBITRARY FOR NOW, otherwise mae a sensitivity analysis
@@ -115,8 +116,8 @@ min_depth = 0.1           # m  (WARNING: running min depth = 0 may take ages)
 
 # correlation lengths
 corr_length_bed = range_bed / sqrt(2)  # m = 175m
-#chatgpt: For models where the variogram approaches the sill asymptotically, 
-#the practical range is defined as the distance at which the variogram reaches 95% of the sill. 
+#chatgpt: For models where the variogram approaches the sill asymptotically,
+#the practical range is defined as the distance at which the variogram reaches 95% of the sill.
 #This practical range relates to the correlation length as follows:​
 # Gaussian Model: Practical range ≈ sqrt(3) x ℓ​ = 1.73 x l
 # Exponential Model: Practical range ≈ 3 x ℓ​
@@ -134,22 +135,22 @@ floatfrac = 0.85 .* ones(size(surfdem))  # test reviewer
 source    = ones(size(surfdem)) # what is "source" ?
 
 # Uncertainties
-surfdem_uc = Uncertainty(absuc=0.0, reluc=0.0)   # or zero_uc()
-beddem_uc    = Uncertainty(absuc=bed_err_std, reluc=0.0, correlation_length=corr_length_bed, covariance_fn=cov_fn)
-floatfrac_uc = Uncertainty(absuc=0.0, reluc=0.1, correlation_length=corr_length_f,covariance_fn=cov_fn) 
+surfdem_uc = WWFR.Uncertainty(absuc=0.0, reluc=0.0)   # or zero_uc()
+beddem_uc    = WWFR.Uncertainty(absuc=bed_err_std, reluc=0.0, correlation_length=corr_length_bed, covariance_fn=cov_fn)
+floatfrac_uc = WWFR.Uncertainty(absuc=0.0, reluc=0.1, correlation_length=corr_length_f,covariance_fn=cov_fn)
 #  f = 0.6 to 1.11 in Chu et aL 2016 (greenland)
 # f = 0.8 to 1.1 in Bowling et al 2015 (greenland)
-source_uc    = Uncertainty()  
+source_uc    = WWFR.Uncertainty()
 
 # --- Helper for quickly defining flotation-uncertainty with a given corr. length ---
-float_uc(L) = Uncertainty(absuc=0.0, reluc=0.2, correlation_length=L, covariance_fn=cov_fn)
-zero_uc()   = Uncertainty(absuc=0.0, reluc=0.0)
+float_uc(L) = WWFR.Uncertainty(absuc=0.0, reluc=0.2, correlation_length=L, covariance_fn=cov_fn)
+zero_uc()   = WWFR.Uncertainty(absuc=0.0, reluc=0.0)
 
 # Keep your existing definitions:
-#   surfdem_uc   = Uncertainty(absuc=surface_err, reluc=0.0, correlation_length=corr_length_surf, covariance_fn=cov_fn)
-#   beddem_uc    = Uncertainty(absuc=bed_err_std,  reluc=0.0, correlation_length=corr_length_bed,  covariance_fn=cov_fn)
-#   floatfrac_uc = Uncertainty(absuc=0.0, reluc=0.1, correlation_length=corr_length_f, covariance_fn=cov_fn)  # L = 100 m (your aggr4)
-#   source_uc    = Uncertainty()
+#   surfdem_uc   = WWFR.Uncertainty(absuc=surface_err, reluc=0.0, correlation_length=corr_length_surf, covariance_fn=cov_fn)
+#   beddem_uc    = WWFR.Uncertainty(absuc=bed_err_std,  reluc=0.0, correlation_length=corr_length_bed,  covariance_fn=cov_fn)
+#   floatfrac_uc = WWFR.Uncertainty(absuc=0.0, reluc=0.1, correlation_length=corr_length_f, covariance_fn=cov_fn)  # L = 100 m (your aggr4)
+#   source_uc    = WWFR.Uncertainty()
 
 # --- Define all cases (indexed order controls aggr#) ---
 cases = [
@@ -186,12 +187,12 @@ for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
 
         sink_areas = (point = [CartesianIndex(i0, j0)])  # single-pixel sink
         #sink_areas = (outlet = [CartesianIndices((1:10, 1:length(ydim)))[:],CartesianIndices((1:10, 1:(length(ydim)÷2)))[:]])
-        
+
 
         println("🔄 Running WWFS stochastic for aggr$(i) on $run_name...")
 
             if i == 1 # all uncertainties: random surface from ensemble + GRF on bed and flotation
-            
+
                 model, get_sample, aggregate = make_fns_surface_ensemble(
                     dx,
                     surface_ensemble,
@@ -203,30 +204,30 @@ for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
                 )
             else
                 # all other cases unchanged
-                model, get_sample, aggregate = WWFS.make_fns(
+                model, get_sample, aggregate = WWFR.make_fns_subglacial(
                     dx,
                     surfdem,  surf_uc,
                     beddem,   bed_uc,
                     floatfrac, float_uc_i,
                     source,   source_uc,
                     sink_areas,
-                    rmask
+                    mask=rmask
                 )
             end
         #former
         """
-        model, get_sample, aggregate = WWFS.make_fns(
+        model, get_sample, aggregate = WWFR.make_fns_subglacial(
             dx,
             surfdem,  surf_uc,
             beddem,   bed_uc,
             floatfrac, float_uc_i,
             source,   source_uc,
             sink_areas,
-            rmask
+            mask=rmask
         )
         """
-        
-        total_vols_all = Float64[] # per-realization total volume of all WPs 
+
+        total_vols_all = Float64[] # per-realization total volume of all WPs
         largest_vols = Float64[]
         total_vols_gt1000 = Float64[]   # per-realization total volume of *individual* WPs > 1000 m³
         n_lakes_gt1000    = Int[]       # per-realization count of WPs > 1000 m³
@@ -240,8 +241,8 @@ for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
         for _ in 1:N
             s = get_sample()
             _, output = model(s...)
-            lakes_free_surf = output[3][2]
-            phi             = output[2][4]
+            lakes_free_surf = output.lakes.depth_free_surface
+            phi             = output.routing.phi
 
             # 1) lake volumes (NO depth threshold anymore)
             analysis = analyze_lakes(lakes_free_surf, thickness; min_depth=min_depth)
@@ -266,12 +267,12 @@ for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
         end
 
         # Aggregate maps/statistics over N runs
-        aggr = map_mc(model, get_sample, aggregate, N)
+        aggr = WWFR.map_mc(model, get_sample, aggregate, N; progressmeter=false)
 
-        
+
     aggr = merge(aggr, (
         largest_lake_fs_vol = Float32.(largest_vols),
-        lake_fs_vol         = Float32.(total_vols_all),      
+        lake_fs_vol         = Float32.(total_vols_all),
         lake_fs_vol_gt1000  = Float32.(total_vols_gt1000),
         n_lakes_gt1000      = Int.(n_lakes_gt1000),
         #phi_profiles        = phi_profiles,
@@ -287,7 +288,7 @@ for (i, (surf_uc, bed_uc, float_uc_i)) in enumerate(cases)
         serialize(outfile, aggr)
         println("✅ Saved $(outfile)")
 
-    
+
 
 end
 

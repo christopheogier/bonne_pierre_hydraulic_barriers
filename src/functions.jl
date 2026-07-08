@@ -3,8 +3,10 @@
 using Rasters
 using ArchGDAL
 using CSV, DataFrames, NearestNeighbors
-using WhereTheWaterFlowsSubglacially
-const WWFS = WhereTheWaterFlowsSubglacially
+using WhereTheWaterFlows
+const WWF = WhereTheWaterFlows
+const WWFS = WhereTheWaterFlows.Subglacially
+const WWFR = WhereTheWaterFlows.Randomly
 import Contour: contour, lines, coordinates
 
 """
@@ -359,7 +361,10 @@ function make_fns_surface_ensemble(
     rhow=WWFS.RHOW,
     rhoi=WWFS.RHOI
 )
-    model(surf, bed, floatfrac, waterinput, gamma=gamma) = (
+    base_surface = first(surface_ensemble)
+    zero_uc = WWFR.Uncertainty(absuc=0.0, reluc=0.0)
+
+    model(surf, bed, floatfrac, waterinput) = (
         (; surf, bed, dx, floatfrac, waterinput),
         WWFS.waterflows_subglacial(
             surf, bed, dx, floatfrac, waterinput, rmask;
@@ -374,34 +379,47 @@ function make_fns_surface_ensemble(
     )
 
     get_sample = let
-        beddem_grf_sampler    = WWFS.make_sampler(dx, beddem, beddem_uc)
-        floatfrac_grf_sampler = WWFS.make_sampler(dx, floatfrac, floatfrac_uc)
-        waterinput_grf_sampler = WWFS.make_sampler(dx, waterinput, waterinput_uc)
+        beddem_grf_sampler = WWFR.make_sampler(dx, beddem, beddem_uc)
+        floatfrac_grf_sampler = WWFR.make_sampler(dx, floatfrac, floatfrac_uc)
+        waterinput_grf_sampler = WWFR.make_sampler(dx, waterinput, waterinput_uc)
 
         function ()
-            surf  = rand(surface_ensemble)
-            bed   = WWFS.make_field_realization(beddem, beddem_grf_sampler, beddem_uc)
-            float = WWFS.make_field_realization(floatfrac, floatfrac_grf_sampler, floatfrac_uc)
-            water = WWFS.make_field_realization(waterinput, waterinput_grf_sampler, waterinput_uc)
+            surf = rand(surface_ensemble)
+            bed = WWFR.make_field_realization(beddem, beddem_grf_sampler, beddem_uc)
+            float = WWFR.make_field_realization(floatfrac, floatfrac_grf_sampler, floatfrac_uc)
+            water = WWFR.make_field_realization(waterinput, waterinput_grf_sampler, waterinput_uc)
             return surf, bed, float, water
         end
     end
 
-    aggregate = WWFS.make_fns(
-        dx,
-        surface_ensemble[1], zero_uc(),   # dummy surface, only used to build aggregate sizes
-        beddem, beddem_uc,
-        floatfrac, floatfrac_uc,
-        waterinput, waterinput_uc,
-        ctch_sinks,
-        rmask;
-        gamma=gamma,
-        min_lake_depth=min_lake_depth,
-        rhow=rhow,
-        rhoi=rhoi
-    )[3]
+    function reduce!()
+        return (
+            areas = zeros(Float32, size(base_surface)),
+            lakes_depth_fs = zeros(Float32, size(base_surface)),
+            n_samples = Ref(0),
+            lake_vol_free_surface = Float32[]
+        )
+    end
 
-    return model, get_sample, aggregate
+    function reduce!(aggr, res)
+        input, output = res
+        lake_depth_free_surface = output.lakes.depth_free_surface
+        aggr.areas .+= output.routing.area.total
+        aggr.lakes_depth_fs .+= lake_depth_free_surface
+        push!(aggr.lake_vol_free_surface, sum(Float32.(lake_depth_free_surface[lake_depth_free_surface .> min_lake_depth])))
+        aggr.n_samples[] += 1
+        return aggr
+    end
+
+    function reduce!(aggr)
+        if aggr.n_samples[] > 0
+            aggr.areas ./= aggr.n_samples[]
+            aggr.lakes_depth_fs ./= aggr.n_samples[]
+        end
+        return aggr
+    end
+
+    return model, get_sample, reduce!
 end
 
 
